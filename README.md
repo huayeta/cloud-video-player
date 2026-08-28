@@ -13,7 +13,8 @@ node server.js
 然后浏览器打开：**http://localhost:8787**
 
 > 需要本机已安装 `ffmpeg` / `ffprobe`（用于不支持格式的实时转码）。检查：`ffmpeg -version`
-> 未安装可用 Homebrew 安装：`brew install ffmpeg`
+> - **Mac**：`brew install ffmpeg`
+> - **Windows**：从 [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) 下载 `release essentials`，解压后将 `bin` 目录加入系统 PATH；或不配 PATH，直接在 `config.json` 里填 `ffmpegPath` / `ffprobePath` 的完整路径（见下方配置表）。
 
 ## 配置
 
@@ -23,15 +24,18 @@ node server.js
 |---|---|---|
 | `port` | `8787` | 服务监听端口 |
 | `ua` | Chrome UA | 抓取源站视频的 User-Agent，部分源站校验 UA |
-| `hlsTime` | `6` | 转码 HLS 分片秒数（6 推荐；越小拖动越精确但越卡/越费资源） |
+| `hlsTime` | `6` | 转码 HLS 分片秒数（6 推荐；越小拖动越精确但请求越频繁） |
+| `hlsInitTime` | `2` | 关键帧间隔基准秒数：越小拖动越精确（2≈±1秒），需能整除 `hlsTime`（系统取两者最大公约数） |
 | `audioBitrateK` | `160` | 音频转码码率 kbps |
-| `x264Preset` | `veryfast` | x264 预设（fast/slow 等） |
+| `x264Preset` | `ultrafast` | x264 转码预设：`ultrafast`=最快（推荐，速度约为 veryfast 的 2 倍，代价缓存体积约大 2.4 倍）；`veryfast`=快但体积小；`slow`=最慢但体积最小画质好 |
 | `x264Crf` | `23` | x264 质量系数（18-28，越小画质越好体积越大） |
 | `tsCacheMaxAge` | `3600` | ts 分片浏览器缓存秒数 |
 | `maxCacheMB` | `2048` | tmp 转码缓存总配额 MB，超限自动清理 |
 | `idleTranscodeTimeoutSec` | `60` | 播放器离开后多少秒终止转码（自动回收） |
 | `quotaScanSec` | `60` | 缓存配额扫描间隔秒 |
 | `maxConcurrent` | `3` | 同时转码的 ffmpeg 进程上限（防多开打爆 CPU/内存），超出返回繁忙提示 |
+| `ffmpegPath` | `ffmpeg` | ffmpeg 可执行文件路径。Mac/Linux 保持默认（依赖系统 PATH）；Windows 可填完整路径如 `C:\\ffmpeg\\bin\\ffmpeg.exe`，无需配置 PATH |
+| `ffprobePath` | `ffprobe` | ffprobe 可执行文件路径。同上，Windows 可填 `C:\\ffmpeg\\bin\\ffprobe.exe` |
 
 > **关于转码模式**：所有需转码的源统一使用 libx264 全转码以保证 HLS 分片稳定（曾实现 h264 源的「视频流拷贝 remux」提速，但实测 `-c:v copy` 直出 HLS 时 muxer 无法可靠计算分片时长（EXTINF=0），会导致播放器无法推进进度，故已禁用）。h264 源转码同样很快。
 
@@ -52,7 +56,7 @@ node server.js
 - **不支持格式**：服务器用 ffmpeg 实时转码为 HLS（m3u8 + ts 分片），**转码请求立即返回**，播放器在后台等待首个分片产出后自动起播（慢源站首片约需数秒至十余秒，期间页面显示加载中，不会误报超时）；进度条可拖到已转码区域。
   - **任意位置可跳转**：拖动到**尚未转码的区域**时，服务器会停止当前转码，并从目标位置重新开始转码（`ffmpeg -ss`），播放器自动跳过去续播——因此整个进度条**任何位置都能拖**，不只是已转码区域。跳转**复用同一缓存目录**（同一视频始终只有一个 tmp 会话目录，不随跳转新增），旧分片自动清空重写。
   - **总时长即时显示**：ffmpeg 打开输入时即打印 `Duration`，服务器解析后通过 `/api/status` 提供给播放器，因此**一开始就能显示视频总时长（如 00:00 / 18:05）**，进度条与拖拽均基于该已知时长工作。
-  - **分片约 2 秒**：转码时强制每 2 秒一个关键帧，HLS 分片均匀、拖动进度精确。
+  - **关键帧 2 秒 / 分片 6 秒**：转码时强制每 2 秒一个关键帧（拖动精度约 ±1 秒），HLS 分片 6 秒（在拖动精度与请求量/转码开销间取得平衡）。
   - **已转码范围指示**：进度条上的淡色条实时显示 ffmpeg 已转码到的时间点；拖到未转区域时显示"转码中"提示，服务器会等待该分片转出后自动续播。
 - **HLS**：服务器拉取 m3u8 并把其中的分片地址递归改写成本地代理，避免源站 CORS 限制。
 
@@ -70,11 +74,14 @@ node server.js
 
 ```
 cloud-vod-player/
-├── server.js        # Node 服务器（代理 + ffmpeg 实时转码）
+├── server.js             # Node 服务器（代理 + ffmpeg 实时转码）
 ├── package.json
+├── config.json           # 实际配置（已 gitignore，从 config.example.json 复制）
+├── config.example.json   # 配置模板（含每项中文说明）
+├── README.md
 ├── public/
-│   └── index.html   # 播放器页面（单文件，原生 JS）
-└── tmp/             # 转码临时产物（自动清理）
+│   └── index.html        # 播放器页面（单文件，原生 JS）
+└── tmp/                  # 转码临时产物（自动清理）
 ```
 
 ## 注意

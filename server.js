@@ -42,7 +42,9 @@ const DEFAULTS = {
   maxCacheMB: 2048,    // tmp 缓存总配额 MB
   idleTranscodeTimeoutSec: 60, // 空闲转码回收阈值（秒）
   quotaScanSec: 60,    // 缓存配额扫描间隔（秒）
-  maxConcurrent: 3     // 同时转码的 ffmpeg 进程上限（防 CPU/内存被打爆）
+  maxConcurrent: 3,    // 同时转码的 ffmpeg 进程上限（防 CPU/内存被打爆）
+  ffmpegPath: 'ffmpeg', // ffmpeg 可执行文件路径；Windows 可填完整路径如 C:\\ffmpeg\\bin\\ffmpeg.exe，留空默认值则依赖系统 PATH
+  ffprobePath: 'ffprobe' // ffprobe 可执行文件路径；Windows 可填完整路径，留空默认值则依赖系统 PATH
 };
 let CFG = {};
 try { CFG = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')); }
@@ -51,6 +53,8 @@ catch (e) { CFG = {}; }
 CFG = Object.keys(DEFAULTS).reduce((o, k) => { o[k] = CFG[k] !== undefined ? CFG[k] : DEFAULTS[k]; return o; }, {});
 const PORT = CFG.port;
 const UA = CFG.ua;
+const FFMPEG_PATH = CFG.ffmpegPath || 'ffmpeg';
+const FFPROBE_PATH = CFG.ffprobePath || 'ffprobe';
 
 // 转码会话：sid -> { dir, proc, name, createdAt, lastAccess }
 const sessions = new Map();
@@ -136,7 +140,7 @@ function probeWithFFprobe(url, cb) {
     '-of', 'json',
     url
   ];
-  execFile('ffprobe', args, { timeout: 20000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+  execFile(FFPROBE_PATH, args, { timeout: 20000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
     if (err) return cb(null);
     try {
       const data = JSON.parse(stdout);
@@ -339,7 +343,7 @@ function startTranscode(url, startSec) {
   // 直接用 libx264 全转码（不先探测，避免 AVI 远程探测耗时导致超时）
   // 启动后后台快速探测源编码：若是 h264，自动切换为 copy（视频流 remux）以大幅提速
   const args = buildFFmpegArgs(url, dir, false, startSec);
-  const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  const proc = spawn(FFMPEG_PATH, args, { stdio: ['ignore', 'ignore', 'pipe'] });
 
   const session = { sid, dir, url, proc, name: baseName(url), createdAt: Date.now(), lastAccess: Date.now(), copy: false, duration: null, transcoded: 0, started: Date.now(), startSec, inputVcodec: undefined };
   sessions.set(sid, session);
@@ -372,7 +376,7 @@ function seekTranscode(sid, to) {
   s.closed = false;
   s.lastAccess = Date.now();
   const args = buildFFmpegArgs(s.url, s.dir, !!s.copy, s.startSec);
-  const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  const proc = spawn(FFMPEG_PATH, args, { stdio: ['ignore', 'ignore', 'pipe'] });
   s.proc = proc;
   attachFfmpegHandlers(s, proc, s.dir);
   return s;

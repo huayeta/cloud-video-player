@@ -23,5 +23,9 @@
   "quotaScanSec": 60,
   "_comment_quotaScanSec": "缓存配额扫描间隔（秒）",
   "maxConcurrent": 3,
-  "_comment_maxConcurrent": "同时转码的 ffmpeg 进程上限（防止多开打爆 CPU/内存），超出时新转码返回繁忙提示"
+  "_comment_maxConcurrent": "同时转码的 ffmpeg 进程上限（防止多开打爆 CPU/内存），超出时新转码返回繁忙提示",
+  "ffmpegPath": "ffmpeg",
+  "_comment_ffmpegPath": "ffmpeg 可执行文件路径。Mac/Linux 保持默认 ffmpeg（依赖系统 PATH）；Windows 可填完整路径如 C:\\ffmpeg\\bin\\ffmpeg.exe，无需配置 PATH",
+  "ffprobePath": "ffprobe",
+  "_comment_ffprobePath": "ffprobe 可执行文件路径。同上，Windows 可填 C:\\ffmpeg\\bin\\ffprobe.exe"
 }
