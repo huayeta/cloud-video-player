@@ -560,6 +560,17 @@ const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://localhost');
   const p = u.pathname;
 
+  // CORS：允许第三方网页通过 embed.js 跨域调用本服务 API / 拉取 HLS 分片
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   // 轻量请求日志：统计 /hls/ 与 /api/ 请求，用于观察播放与转码会话生命周期
   if (p.startsWith('/hls/') || p.startsWith('/api/')) {
     console.log('[req]', new Date().toISOString().slice(11, 19), p + (u.search || ''));

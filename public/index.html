@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>云点播 · 任意格式视频播放</title>
+<title>云点播 · 任意格式远程视频播放服务</title>
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 /* ===== 基础 ===== */
@@ -82,185 +82,9 @@ header{
 .play-btn:hover{filter:brightness(1.06)}
 .play-btn:active{transform:scale(.98)}
 
-/* ===== 播放器 ===== */
+/* ===== 播放器区域（SDK 容器） ===== */
 .player-shell{margin-top:18px}
-.player-stage{
-  position:relative;
-  aspect-ratio:16/9;
-  background:#000;
-  border-radius:16px;overflow:hidden;
-  box-shadow:0 24px 60px rgba(0,0,0,.5);
-  border:1px solid var(--line-soft);
-  cursor:pointer;
-  user-select:none;
-  -webkit-user-select:none;
-  touch-action:manipulation;
-}
-.player-stage video{
-  width:100%;height:100%;display:block;object-fit:contain;background:#000;
-}
-.stage-overlay{
-  position:absolute;inset:0;
-  display:grid;place-items:center;
-  pointer-events:none;
-  z-index:5;
-}
-.stage-overlay[hidden]{display:none}
-.spinner{
-  width:58px;height:58px;border-radius:50%;
-  border:3px solid rgba(255,255,255,.15);
-  border-top-color:var(--accent);
-  animation:spin .8s linear infinite;
-}
-@keyframes spin{to{transform:rotate(360deg)}}
-.error-box{
-  max-width:86%;text-align:center;padding:20px 26px;border-radius:12px;
-  background:rgba(12,10,10,.82);border:1px solid rgba(255,107,107,.4);
-  color:#ffd9d9;font-size:13.5px;line-height:1.7;
-}
-.error-box b{display:block;color:#ff8f8f;font-size:15px;margin-bottom:6px}
-.idle-box{
-  text-align:center;color:var(--text-3);
-}
-.idle-box .idle-mark{color:var(--accent);opacity:.85;margin-bottom:12px}
-.idle-box p{font-size:13.5px;letter-spacing:.4px}
-
-.big-play{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:84px;height:84px;border-radius:50%;
-  display:grid;place-items:center;
-  background:rgba(10,10,12,.5);backdrop-filter:blur(4px);
-  border:1px solid rgba(255,255,255,.25);
-  color:#fff;cursor:pointer;
-  transition:transform .16s,background .16s,opacity .2s;
-  z-index:6;
-}
-.big-play:hover{transform:translate(-50%,-50%) scale(1.06);background:rgba(242,178,76,.9);color:#1a1205}
-.big-play[hidden]{display:none}
-
-.stage-top{
-  position:absolute;left:0;right:0;top:0;
-  display:flex;align-items:center;gap:10px;
-  padding:12px 16px;
-  background:linear-gradient(180deg,rgba(0,0,0,.55),transparent);
-  opacity:0;transition:opacity .25s;
-  pointer-events:none;z-index:4;
-}
-.player-stage:hover .stage-top,.player-stage.controls-on .stage-top{opacity:1}
-.fmt-tag{
-  font-size:11px;font-weight:700;letter-spacing:1px;
-  padding:3px 9px;border-radius:999px;
-  background:var(--accent-soft);color:var(--accent-2);
-  border:1px solid rgba(242,178,76,.35);
-  font-family:"JetBrains Mono",monospace;
-}
-.stage-title{
-  font-size:12.5px;color:rgba(255,255,255,.85);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  font-family:"JetBrains Mono",monospace;
-}
-
-/* ===== 控制条 ===== */
-.controls{
-  position:absolute;left:0;right:0;bottom:0;z-index:7;
-  padding:26px 16px 12px;
-  background:linear-gradient(0deg,rgba(0,0,0,.78),rgba(0,0,0,.25) 70%,transparent);
-  opacity:0;transform:translateY(6px);
-  transition:opacity .25s,transform .25s;
-  pointer-events:none;
-}
-.player-stage:hover .controls,
-.player-stage.controls-on .controls,
-.player-stage:not(.playing) .controls{opacity:1;transform:none;pointer-events:auto}
-.player-stage.controls-lock .controls{opacity:1 !important;transform:none !important;pointer-events:auto !important}
-
-.progress-row{padding:2px 0 8px;cursor:pointer}
-.progress{position:relative;height:18px;display:flex;align-items:center}
-.progress-track{
-  position:relative;width:100%;height:4px;border-radius:999px;
-  background:rgba(255,255,255,.22);
-  transition:height .12s;
-}
-.progress:hover .progress-track{height:6px}
-.progress-buffer{
-  position:absolute;left:0;top:0;bottom:0;border-radius:999px;
-  background:rgba(255,255,255,.32);
-}
-.progress-transcoded{
-  position:absolute;left:0;top:0;bottom:0;border-radius:999px;
-  background:rgba(242,178,76,.22);
-}
-.progress-played{
-  position:absolute;left:0;top:0;bottom:0;border-radius:999px;
-  background:linear-gradient(90deg,var(--accent-2),var(--accent));
-}
-.progress-thumb{
-  position:absolute;top:50%;width:13px;height:13px;border-radius:50%;
-  background:var(--accent-2);
-  transform:translate(-50%,-50%) scale(0);
-  box-shadow:0 0 0 3px rgba(242,178,76,.25);
-  transition:transform .14s;
-}
-.progress:hover .progress-thumb,.progress.scrubbing .progress-thumb{transform:translate(-50%,-50%) scale(1)}
-.transcode-hint{
-  position:absolute;top:50%;transform:translateY(-50%);
-  right:10px;font-size:11px;font-weight:600;letter-spacing:.5px;
-  color:var(--accent-2);background:rgba(10,13,18,.85);
-  border:1px solid rgba(242,178,76,.4);border-radius:6px;
-  padding:2px 8px;pointer-events:none;white-space:nowrap;
-  opacity:0;transition:opacity .2s;z-index:2;
-}
-.transcode-hint.on{opacity:1}
-.scrub-bubble{
-  position:absolute;bottom:26px;transform:translateX(-50%);
-  background:#11161f;color:var(--text);
-  border:1px solid var(--line);border-radius:8px;
-  padding:4px 10px;font-size:12px;
-  font-family:"JetBrains Mono",monospace;
-  opacity:0;transition:opacity .15s;pointer-events:none;
-  white-space:nowrap;
-  box-shadow:0 6px 18px rgba(0,0,0,.4);
-}
-.progress.scrubbing .scrub-bubble{opacity:1}
-
-.ctrl-row{display:flex;align-items:center;gap:6px;color:#fff}
-.icon-btn{
-  width:44px;height:44px;border:none;background:transparent;color:#fff;cursor:pointer;
-  display:grid;place-items:center;border-radius:10px;
-  transition:background .15s,color .15s;
-}
-/* 图标显隐控制：用 .hide class 控制（避免 grid blockify 覆盖 hidden 属性，
-   也避免 [hidden] 属性选择器与 JS property 不同步导致的误隐藏） */
-.ctrl-icon.hide{display:none !important}
-.icon-btn:hover{background:rgba(255,255,255,.14)}
-.time{
-  font-size:12.5px;color:rgba(255,255,255,.85);
-  font-family:"JetBrains Mono",monospace;
-  padding:0 10px;white-space:nowrap;
-  letter-spacing:.3px;
-}
-.spacer{flex:1}
-.vol-group{display:flex;align-items:center}
-.vol-range{
-  width:0;opacity:0;overflow:hidden;
-  -webkit-appearance:none;appearance:none;height:4px;border-radius:999px;
-  background:rgba(255,255,255,.25);outline:none;
-  transition:width .2s,opacity .2s,margin .2s;
-}
-.vol-group:hover .vol-range{width:92px;opacity:1;margin-left:4px}
-.vol-range::-webkit-slider-thumb{
-  -webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;
-  background:var(--accent-2);cursor:pointer;
-}
-.vol-range::-moz-range-thumb{width:12px;height:12px;border:none;border-radius:50%;background:var(--accent-2);cursor:pointer}
-.rate-sel{
-  height:34px;border-radius:8px;padding:0 8px;
-  background:rgba(255,255,255,.1);color:#fff;
-  border:1px solid rgba(255,255,255,.18);
-  font-size:12.5px;outline:none;cursor:pointer;
-  font-family:"JetBrains Mono",monospace;
-}
-.rate-sel option{background:#161d29;color:#e9ecf1}
+#player{width:100%;aspect-ratio:16/9;border-radius:16px;overflow:hidden}
 
 /* ===== 信息区 ===== */
 .info-grid{
@@ -306,7 +130,6 @@ header{
 .fmt-item .dot{width:7px;height:7px;border-radius:50%;flex:none}
 .dot.native{background:var(--ok)}
 .dot.hls{background:var(--accent)}
-.dot.flv{background:#7c9cf5}
 .dot.trans{background:#e06c9f}
 .fmt-item small{color:var(--text-3);font-size:11px}
 .note{
@@ -320,7 +143,6 @@ header{
   .brand-text h1{font-size:19px}
   .info-grid{grid-template-columns:1fr}
   .play-btn{padding:0 16px}
-  .vol-group .vol-range{width:56px;opacity:1;margin-left:4px}
 }
 @media (max-width:480px){
   .url-bar{flex-wrap:wrap}
@@ -328,9 +150,6 @@ header{
   .play-btn{order:3;width:100%;justify-content:center}
   .url-icon{order:1;width:40px}
 }
-
-.player-stage:fullscreen{border-radius:0;border:none}
-.player-stage:fullscreen video{object-fit:contain}
 </style>
 </head>
 <body>
@@ -364,83 +183,9 @@ header{
     </button>
   </div>
 
+  <!-- SDK 播放器容器：embed.js 在此渲染 Shadow DOM 播放器 -->
   <div class="player-shell">
-    <div class="player-stage" id="stage">
-      <video id="video" playsinline preload="auto"></video>
-
-      <div class="stage-top">
-        <span class="fmt-tag" id="fmtTag">--</span>
-        <span class="stage-title" id="stageTitle">等待加载视频</span>
-      </div>
-
-      <div class="stage-overlay" id="idleBox">
-        <div class="idle-box">
-          <div class="idle-mark">
-            <svg viewBox="0 0 24 24" width="56" height="56" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          </div>
-          <p>在上方输入视频地址，点击「播放」即可秒开观看</p>
-        </div>
-      </div>
-
-      <div class="stage-overlay" id="loadingBox" hidden>
-        <div class="spinner"></div>
-      </div>
-
-      <div class="stage-overlay" id="errorBox" hidden>
-        <div class="error-box">
-          <b id="errorTitle">无法播放</b>
-          <span id="errorText"></span>
-        </div>
-      </div>
-
-      <button class="big-play" id="bigPlay" hidden aria-label="播放">
-        <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-      </button>
-
-      <div class="controls" id="controls">
-        <div class="progress-row" id="progressRow">
-          <div class="progress" id="progress">
-            <div class="progress-track">
-              <div class="progress-buffer" id="progressBuffer"></div>
-              <div class="progress-transcoded" id="progressTranscoded" hidden></div>
-              <div class="progress-played" id="progressPlayed"></div>
-              <div class="progress-thumb" id="progressThumb"></div>
-            </div>
-            <div class="transcode-hint" id="transcodeHint" hidden>转码中…</div>
-            <div class="scrub-bubble" id="scrubBubble">00:00</div>
-          </div>
-        </div>
-        <div class="ctrl-row">
-          <button class="icon-btn" id="playPauseBtn" aria-label="播放/暂停">
-            <svg id="iconPlay" class="ctrl-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            <svg id="iconPause" class="ctrl-icon hide" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
-          </button>
-          <span class="time" id="timeText">00:00 / 00:00</span>
-          <div class="spacer"></div>
-          <div class="vol-group">
-            <button class="icon-btn" id="muteBtn" aria-label="静音">
-              <svg id="iconVol" class="ctrl-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M15.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M18.2 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <svg id="iconMuted" class="ctrl-icon hide" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16 9l6 6M22 9l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
-            </button>
-            <input class="vol-range" id="volRange" type="range" min="0" max="100" value="100" aria-label="音量">
-          </div>
-          <select class="rate-sel" id="rateSel" aria-label="倍速">
-            <option value="0.5">0.5x</option>
-            <option value="0.75">0.75x</option>
-            <option value="1" selected>1.0x</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="2">2.0x</option>
-          </select>
-          <button class="icon-btn" id="pipBtn" aria-label="画中画" hidden>
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="8" height="6" fill="currentColor" stroke="none"/></svg>
-          </button>
-          <button class="icon-btn" id="fsBtn" aria-label="全屏">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    <div id="player"></div>
   </div>
 
   <div class="info-grid">
@@ -470,95 +215,39 @@ header{
       <div class="fmt-item"><span class="dot native"></span>WebM <small>原生直连</small></div>
       <div class="fmt-item"><span class="dot native"></span>OGG / OGV <small>原生直连</small></div>
       <div class="fmt-item"><span class="dot hls"></span>M3U8 (HLS) <small>代理流</small></div>
-      <div class="fmt-item"><span class="dot flv"></span>FLV <small>flv.js</small></div>
       <div class="fmt-item"><span class="dot trans"></span>AVI <small>实时转码</small></div>
       <div class="fmt-item"><span class="dot trans"></span>MKV <small>实时转码</small></div>
+      <div class="fmt-item"><span class="dot trans"></span>FLV <small>实时转码</small></div>
       <div class="fmt-item"><span class="dot trans"></span>RMVB / WMV <small>实时转码</small></div>
     </div>
   </div>
 
   <p class="note">
     说明：MP4/WebM 等格式经本地服务器反向代理直连源站（透传 Range），实现秒开与任意拖拽；
-    AVI/MKV/RMVB/WMV/MPEG 等浏览器不支持的格式，由本地 ffmpeg 实时转码为 HLS 流播放。
+    AVI/MKV/FLV/RMVB/WMV/MPEG 等浏览器不支持的格式，由本地 ffmpeg 实时转码为 HLS 流播放。
+    播放器由 embed.js SDK 以 Shadow DOM 形式嵌入，样式与页面完全隔离。
     本页需通过本地服务器访问（node server.js 后打开 http://localhost:8787）。
   </p>
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.7.1/dist/hls.min.js" integrity="sha384-X6qxWXYhVZFp6V31bNDBz4eOoPnZloPbOdTcnhnvRJY2+2pDMrO7R4/1mXfJ9VXY" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js" integrity="sha384-XeE1sKdKcsuvSZKnQHiuBPgM5gqTRLXKh/IUe1bgkTTQcwLOid3l8tq+uJRKe5zQ" crossorigin="anonymous"></script>
-
+<!-- 引入云点播 SDK（播放器由 SDK 渲染） -->
+<script src="/embed.js"></script>
 <script>
 (function(){
   'use strict';
 
-  var $ = function(id){ return document.getElementById(id); };
-  var video = $('video');
-  var stage = $('stage');
-  var urlInput = $('urlInput');
-  var playBtn = $('playBtn');
-  var fmtTag = $('fmtTag');
-  var stageTitle = $('stageTitle');
-  var idleBox = $('idleBox');
-  var loadingBox = $('loadingBox');
-  var errorBox = $('errorBox');
-  var errorTitle = $('errorTitle');
-  var errorText = $('errorText');
-  var bigPlay = $('bigPlay');
-  var playPauseBtn = $('playPauseBtn');
-  var iconPlay = $('iconPlay');
-  var iconPause = $('iconPause');
-  var timeText = $('timeText');
-  var progress = $('progress');
-  var progressRow = $('progressRow');
-  var progressBuffer = $('progressBuffer');
-  var progressTranscoded = $('progressTranscoded');
-  var transcodeHint = $('transcodeHint');
-  var progressPlayed = $('progressPlayed');
-  var progressThumb = $('progressThumb');
-  var scrubBubble = $('scrubBubble');
-  var muteBtn = $('muteBtn');
-  var iconVol = $('iconVol');
-  var iconMuted = $('iconMuted');
-  var volRange = $('volRange');
-  var rateSel = $('rateSel');
-  var pipBtn = $('pipBtn');
-  var fsBtn = $('fsBtn');
-  var samplesEl = $('samples');
-  var histList = $('histList');
-
-  var hls = null;
-  var flvPlayer = null;
-  var currentUrl = '';
-  var playing = false;
-  var scrubbing = false;
-  var hideTimer = null;
+  var urlInput = document.getElementById('urlInput');
+  var playBtn = document.getElementById('playBtn');
+  var samplesEl = document.getElementById('samples');
+  var histList = document.getElementById('histList');
   var HIST_KEY = 'vod_player_history';
-  // 已知总时长（秒）：转码模式下 video.duration 不可靠（HLS 边转边播），
-  // 由 /api/status 返回的 ffmpeg 解析时长驱动进度条与拖拽
-  var knownDuration = null;
-  var transcodeSid = null;
-  var transcodeDone = false;  // 转码是否已完成（完成后停止轮询，但保留 sid 供跳转复用同一目录）
-  var transcodedSec = 0;   // 已实时转码到的实际时间点（秒，绝对位置）
-  var transcodeBase = 0;   // 当前转码会话对应的实际起始秒（跳转到未转区后 = 目标位置）
-  var transcodeMode = false;  // 是否处于"转码为 HLS"播放模式（用于拖拽跳转判定）
 
-  // 当前实际播放位置（秒，绝对）：video.currentTime 相对会话清单，需加转码起点偏移
-  function videoCurrent(){
-    return (transcodeBase || 0) + (video.currentTime || 0);
-  }
-  var pendingSeekT = 0;   // 拖动中的目标位置（松手时执行）
+  // 初始化 SDK 播放器（不自动播放，用户点击播放按钮后加载）
+  var player = new CloudVodPlayer('#player', {
+    server: ''   // 同源页面，留空自动推断
+  });
 
-  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
-  function fmtTime(s){
-    if(!isFinite(s) || s < 0) s = 0;
-    s = Math.floor(s);
-    var h = Math.floor(s / 3600);
-    var m = Math.floor((s % 3600) / 60);
-    var sec = s % 60;
-    var pad = function(n){ return (n < 10 ? '0' : '') + n; };
-    return (h > 0 ? h + ':' + pad(m) : m) + ':' + pad(sec);
-  }
   function shortName(url){
     try{
       var u = new URL(url);
@@ -566,494 +255,20 @@ header{
       return path.length ? path[path.length-1].slice(0,42) : u.host;
     }catch(e){ return url.slice(0,42); }
   }
-  function setFmtTag(fmt){
-    var map = { native:'MP4', hls:'M3U8', flv:'FLV', transcode:'转码' };
-    fmtTag.textContent = map[fmt] || fmt.toUpperCase();
-  }
 
-  function showLoading(){ idleBox.hidden = true; errorBox.hidden = true; loadingBox.hidden = false; }
-  function hideLoading(){ loadingBox.hidden = true; idleBox.hidden = true; }
-  function showError(title, text){
-    loadingBox.hidden = true; idleBox.hidden = true;
-    errorTitle.textContent = title;
-    errorText.textContent = text;
-    errorBox.hidden = false;
-  }
-  function setPlaying(p){
-    playing = p;
-    // 状态指示型图标：播放中显示播放图标，暂停时显示暂停图标
-    iconPlay.classList.toggle('hide', !p);
-    iconPause.classList.toggle('hide', p);
-    bigPlay.hidden = p || !video.src;
-    stage.classList.toggle('playing', p);
-    if(p){ scheduleHide(); } else { showControls(); }
-  }
-  function showControls(){ stage.classList.add('controls-on'); clearTimeout(hideTimer); }
-  function scheduleHide(){
-    stage.classList.add('controls-on');          // 播放瞬间先显示
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(function(){
-      stage.classList.remove('controls-on');     // 2.8s 后自动隐藏（悬停仍显示）
-    }, 2800);
-  }
-
-  /* ---- 暂停保活：暂停时定期 ping，阻止服务器自动回收终止后台转码缓存 ----
-   * 播放器暂停时 hls.js 停止拉流（lastAccess 不再更新），若无保活会被 60s 空闲回收误杀。
-   * 恢复播放（playing）或切换/结束时停止保活。 */
-  var holdTimer = null;
-  function startHoldAlive(){
-    if(holdTimer) return;                       // 已在保活
-    if(!transcodeSid) return;                   // 仅转码场景需要保活
-    holdTimer = setInterval(function(){
-      if(!transcodeSid){ stopHoldAlive(); return; }
-      fetch('/api/ping?sid=' + encodeURIComponent(transcodeSid)).catch(function(){});
-    }, 30000);                                  // 每 30 秒 ping 一次（远小于 60s 回收阈值）
-  }
-  function stopHoldAlive(){
-    if(holdTimer){ clearInterval(holdTimer); holdTimer = null; }
-  }
-
-  function stopExisting(){
-    stopHoldAlive();
-    if(hls){ try{ hls.destroy(); }catch(e){} hls = null; }
-    if(flvPlayer){ try{ flvPlayer.destroy(); }catch(e){} flvPlayer = null; }
-    try{ video.removeAttribute('src'); video.load(); }catch(e){}
-  }
-
-  function resetProgress(){
-    progressPlayed.style.width = '0%';
-    progressBuffer.style.width = '0%';
-    progressThumb.style.left = '0%';
-    progressTranscoded.style.width = '0%';
-    progressTranscoded.hidden = true;
-    transcodeHint.classList.remove('on');
-    timeText.textContent = '00:00 / 00:00';
-  }
-
-  /* ===== 核心：通过服务器探测并播放 ===== */
-  var pollToken = 0;   // 递增令牌：切换视频时使旧轮询链失效，防止重复请求
   function loadVideo(url){
-    url = url.trim();
-    if(!url) return;
-    // 终止上一个转码会话：不再播放的视频，后台立即停止转码缓存，释放 CPU
-    if(transcodeSid){
-      var oldSid = transcodeSid;
-      transcodeSid = null;
-      fetch('/api/stop?sid=' + encodeURIComponent(oldSid)).catch(function(){});
-    }
-    stopExisting();
-    pollToken++;       // 作废旧轮询链
-    currentUrl = url;
-    urlInput.value = url;
-    errorBox.hidden = true;
-    idleBox.hidden = true;
-    showLoading();
-    setPlaying(false);
-    resetProgress();
-    stageTitle.textContent = shortName(url);
-    knownDuration = null;
-    transcodeSid = null;
-    transcodeDone = false;
-    transcodedSec = 0;
-    transcodeBase = 0;
-    transcodeMode = false;
-
-    fetch('/api/probe?url=' + encodeURIComponent(url))
-      .then(function(r){ return r.json(); })
-      .then(function(info){
-        // 快速切换视频时，旧 probe 响应可能在新视频之后到达：若当前 URL 已变，忽略旧响应
-        if(currentUrl !== url) return;
-        var mode = info.mode || 'native';
-        setFmtTag(mode);
-        if(mode === 'native'){
-          // 原生格式：走本地代理，透传 Range → 秒开 + 拖拽
-          video.src = '/api/proxy?url=' + encodeURIComponent(url);
-          video.play().catch(function(){ hideLoading(); });
-        } else if(mode === 'hls'){
-          playHLS('/api/hlsproxy?url=' + encodeURIComponent(url));
-        } else if(mode === 'transcode'){
-          // 不支持的格式：请求服务器后台转码为 HLS，返回后立即开始（首片生成中会自动等待）
-          transcodeMode = true;
-          fetch('/api/transcode?url=' + encodeURIComponent(url))
-            .then(function(r){ return r.json(); })
-            .then(function(t){
-              // 切换视频后旧 transcode 响应可能晚到：若当前 URL 已变，忽略旧会话
-              if(currentUrl !== url) return;
-              if(t.playlist){
-                transcodeSid = t.sid || null;
-                transcodeBase = t.startSec || 0;   // 若从指定秒转码，记录起点用于时间映射
-                playHLS(t.playlist, true);
-                // 轮询 /api/status 拿到 ffmpeg 解析的总时长，一开始就显示进度与总时长
-                pollTranscodeStatus();
-              }
-              else showError('转码失败', t.error || '无法启动转码服务');
-            })
-            .catch(function(){
-              showError('转码失败', '无法连接转码服务，请确认 node server.js 已启动。');
-            });
-        }
-      })
-      .catch(function(){
-        showError('无法连接服务器', '请先在本目录运行 node server.js，然后通过 http://localhost:8787 访问本页面。');
-      });
-
+    url = (url || '').trim();
+    if(!url){ urlInput.focus(); return; }
+    if(!/^https?:\/\//i.test(url)){ url = 'https://' + url; urlInput.value = url; }
+    player.load(url);
     saveHistory(url);
     renderHistory();
   }
 
-  function playHLS(src, isTranscode){
-    if(typeof Hls !== 'undefined' && Hls.isSupported()){
-      hls = new Hls({
-        lowLatencyMode: false,
-        startLevel: -1,
-        capLevelToPlayerSize: true,
-        // 转码场景首片可能尚未生成：放宽清单加载超时与重试
-        manifestLoadingTimeOut: isTranscode ? 60000 : 15000,
-        manifestLoadingMaxRetry: isTranscode ? 10 : 2,
-        manifestLoadingRetryDelay: 2000,
-        manifestLoadingMaxRetryTimeout: 90000,
-        levelLoadingTimeOut: 20000,
-        fragLoadingTimeOut: 30000,
-        // 加大缓冲，降低直播清单刷新频率，减少 m3u8 反复请求
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        liveSyncDurationCount: 5,
-        backBufferLength: 60
-      });
-      hls.loadSource(src);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, function(){
-        hideLoading();
-        video.play().catch(function(){});
-      });
-      hls.on(Hls.Events.ERROR, function(e, data){
-        if(!data.fatal) return;
-        if(data.type === Hls.ErrorTypes.NETWORK_ERROR){
-          // 转码未就绪时耐心重试，不立即报错
-          if(isTranscode){
-            hls.startLoad();
-          } else {
-            hls.startLoad();
-          }
-        }
-        else if(data.type === Hls.ErrorTypes.MEDIA_ERROR){
-          hls.recoverMediaError();
-        }
-        else {
-          showError('HLS 播放失败', '无法解析该 m3u8 流，可能链接失效或源站不允许访问。');
-        }
-      });
-    } else if(video.canPlayType('application/vnd.apple.mpegurl')){
-      video.src = src;
-      video.play().catch(function(){});
-    } else {
-      hideLoading();
-      showError('浏览器不支持 HLS', '当前浏览器无法播放 m3u8 流，请更换浏览器。');
-    }
-  }
+  playBtn.addEventListener('click', function(){ loadVideo(urlInput.value); });
+  urlInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') loadVideo(urlInput.value); });
 
-  // 轮询转码会话状态：尽早拿到总时长（驱动进度条显示与拖拽）+ 实时转码范围
-  function pollTranscodeStatus(){
-    if(!transcodeSid || transcodeDone) return;
-    var myToken = pollToken;
-    fetch('/api/status?sid=' + encodeURIComponent(transcodeSid))
-      .then(function(r){
-        if(r.status === 429){ throw { throttled: true }; }   // 服务端限流：放慢节奏
-        return r.json();
-      })
-      .then(function(st){
-        // 已切换视频：作废本次轮询
-        if(myToken !== pollToken) return;
-        // 会话起始秒可能变化（跳转后），以服务器返回为准
-        if(st.startSec !== undefined) transcodeBase = st.startSec || 0;
-        if(st.duration && !knownDuration){
-          knownDuration = st.duration;
-          var durTxt = fmtTime(knownDuration);
-          timeText.textContent = fmtTime(videoCurrent()) + ' / ' + durTxt;
-          // 刷新缓冲条比例（用已知时长替代 Infinity）
-          refreshProgressUI();
-        }
-        // 更新"已转码范围"指示条（transcoded 相对会话起点，映射为绝对位置）
-        if(st.transcoded && knownDuration){
-          transcodedSec = transcodeBase + st.transcoded;
-          progressTranscoded.hidden = false;
-          progressTranscoded.style.width = clamp(transcodedSec / knownDuration, 0, 1) * 100 + '%';
-          updateTranscodeHint();
-        }
-        if(st.error && !video.src){
-          showError('转码失败', st.error);
-          return;
-        }
-        // 持续轮询：转码未完成（还没到总时长）前，持续更新"已转码范围"指示条。
-        // 拿到总时长后大幅降频（5s）；转码完成即停止轮询，不再产生任何 status 请求。
-        var absTranscoded = (transcodeBase || 0) + (st.transcoded || 0);
-        if(currentUrl && (!knownDuration || absTranscoded < (knownDuration || 0) - 1)){
-          // 定时器内再校验 token：跳转/切视频后旧链到点即止，避免多条轮询链并存
-          // 未拿到时长时用 3000ms（远大于服务端 1000ms 限流窗口，避免 429）；拿到后 5000ms
-          setTimeout(function(){ if(myToken === pollToken) pollTranscodeStatus(); }, knownDuration ? 5000 : 3000);
-        } else {
-          // 转码完成：进度条指示可拉到全片末尾，并停止轮询。
-          // 注意：保留 transcodeSid（不置 null），这样之后再拖到未缓存区仍可复用同一目录。
-          progressTranscoded.style.width = '100%';
-          transcodedSec = knownDuration;   // 全片已转，任何位置都可直接拖拽
-          transcodeDone = true;            // 仅停止轮询，不销毁会话引用
-          updateTranscodeHint();
-        }
-      })
-      .catch(function(err){
-        // 被服务端限流或网络抖动：放慢节奏重试（同样校验 token，避免旧链复活）
-        if(myToken === pollToken && currentUrl)
-          setTimeout(function(){ if(myToken === pollToken) pollTranscodeStatus(); }, err && err.throttled ? 5000 : 2000);
-      });
-  }
-
-  // 拖拽/播放位置超过已转码范围时，显示"转码中"提示
-  function updateTranscodeHint(){
-    if(transcodeDone || !knownDuration) { transcodeHint.classList.remove('on'); return; }
-    var cur = videoCurrent() || 0;
-    if(cur > transcodedSec + 1){
-      transcodeHint.textContent = '转码中 ' + fmtTime(transcodedSec);
-      transcodeHint.classList.add('on');
-    } else {
-      transcodeHint.classList.remove('on');
-    }
-  }
-
-  // 用已知总时长（优先）计算当前进度，驱动进度条与时间显示
-  function effectiveDuration(){
-    if(knownDuration && knownDuration > 0) return knownDuration;
-    var d = video.duration;
-    return (isFinite(d) && d > 0) ? d : 0;
-  }
-  function refreshProgressUI(){
-    var dur = effectiveDuration();
-    var ratio = dur > 0 ? clamp(videoCurrent() / dur, 0, 1) : 0;
-    progressPlayed.style.width = (ratio * 100) + '%';
-    progressThumb.style.left = (ratio * 100) + '%';
-    if(dur > 0){
-      var durTxt = fmtTime(dur);
-      timeText.textContent = fmtTime(videoCurrent()) + ' / ' + durTxt;
-    }
-    if(dur > 0 && video.buffered.length){
-      var end = video.buffered.end(video.buffered.length - 1);
-      progressBuffer.style.width = clamp(end / dur, 0, 1) * 100 + '%';
-    }
-    updateTranscodeHint();
-  }
-
-  function playFLV(src){
-    if(typeof flvjs !== 'undefined' && flvjs.isSupported()){
-      flvPlayer = flvjs.createPlayer({ type: 'flv', url: src, isLive: false, cors: false, enableStashBuffer: true });
-      flvPlayer.attachMediaElement(video);
-      flvPlayer.load();
-      flvPlayer.play().then(function(){ hideLoading(); })
-        .catch(function(){
-          hideLoading();
-          showError('FLV 播放失败', '该 flv 流无法播放，可能链接失效或为直播流。');
-        });
-    } else {
-      hideLoading();
-      showError('浏览器不支持 FLV', '当前浏览器无法播放 flv 流。');
-    }
-  }
-
-  function seekFromEvent(e){
-    var rect = progress.getBoundingClientRect();
-    var ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    var dur = effectiveDuration();
-    progressPlayed.style.width = (ratio * 100) + '%';
-    progressThumb.style.left = (ratio * 100) + '%';
-    scrubBubble.style.left = (ratio * 100) + '%';
-    var t = dur > 0 ? ratio * dur : 0;
-    scrubBubble.textContent = fmtTime(t);
-    pendingSeekT = t;   // 拖动中只预览，松手时真正执行
-    var durTxt = dur > 0 ? fmtTime(dur) : '00:00';
-    timeText.textContent = fmtTime(t) + ' / ' + durTxt;
-  }
-
-  // 拖动松手：执行真正的跳转。
-  // 转码模式下，目标落在当前会话覆盖区之外
-  // （往回拖到起点之前 / 向前拖到未转区）→ 复用同一缓存目录，从目标位置重新转码；
-  // 否则直接 seek。
-  function doSeek(t){
-    if(transcodeMode && knownDuration && t < knownDuration - 0.5){
-      if(t < (transcodeBase || 0) - 1 || t > transcodedSec + 1){
-        seekTranscode(t);
-        return;
-      }
-      try{ video.currentTime = clamp(t - (transcodeBase || 0), 0, (video.duration||0)); }catch(e){}
-      return;
-    }
-    try{ video.currentTime = clamp(t - (transcodeBase || 0), 0, (video.duration||0)); }catch(e){}
-  }
-
-  // 跳到未转码/已过区域：复用同一会话与缓存目录，停止当前转码并从目标秒重新转码，
-  // 不再新建目录（ffmpeg -ss）。若原会话已结束（转码完成被回收），则重建会话。
-  function seekTranscode(t){
-    showLoading();
-    var sid = transcodeSid;
-    stopExisting();            // 销毁当前 hls 实例，释放 video
-    var ep = sid
-      ? '/api/seek?sid=' + encodeURIComponent(sid) + '&to=' + Math.max(0, Math.floor(t))
-      : '/api/transcode?url=' + encodeURIComponent(currentUrl) + '&start=' + Math.max(0, Math.floor(t));
-    fetch(ep)
-      .then(function(r){ return r.json(); })
-      .then(function(res){
-        if(res.ok || res.playlist){
-          pollToken++;         // 作废旧轮询链
-          transcodeSid = res.sid || sid || null;
-          transcodeDone = false;   // 重新开始转码，恢复轮询
-          transcodeBase = res.startSec || 0;
-          transcodedSec = transcodeBase;   // 从该点重新起算
-          playHLS(res.playlist, true);
-          pollTranscodeStatus();
-          hideLoading();
-        } else {
-          hideLoading();
-          showError('跳转失败', res.error || '无法从该位置启动转码');
-        }
-      })
-      .catch(function(){
-        hideLoading();
-        showError('跳转失败', '无法连接转码服务，请确认 node server.js 已启动。');
-      });
-  }
-
-  progressRow.addEventListener('pointerdown', function(e){
-    if(!video.src) return;
-    scrubbing = true;
-    progress.classList.add('scrubbing');
-    progressRow.setPointerCapture(e.pointerId);
-    seekFromEvent(e);
-  });
-  progressRow.addEventListener('pointermove', function(e){ if(scrubbing) seekFromEvent(e); });
-  function endScrub(e){
-    if(!scrubbing) return;
-    scrubbing = false;
-    progress.classList.remove('scrubbing');
-    try{ progressRow.releasePointerCapture(e.pointerId); }catch(err){}
-    doSeek(pendingSeekT);   // 松手时真正跳转（已转区直接 seek，未转区重新转码）
-  }
-  progressRow.addEventListener('pointerup', endScrub);
-  progressRow.addEventListener('pointercancel', endScrub);
-
-  video.addEventListener('loadedmetadata', function(){
-    hideLoading();
-    var dur = effectiveDuration();
-    var durTxt = dur > 0 ? fmtTime(dur) : '00:00';
-    timeText.textContent = fmtTime(videoCurrent()) + ' / ' + durTxt;
-  });
-  video.addEventListener('durationchange', function(){
-    var dur = effectiveDuration();
-    if(dur > 0) timeText.textContent = fmtTime(videoCurrent()) + ' / ' + fmtTime(dur);
-  });
-  video.addEventListener('timeupdate', function(){
-    if(scrubbing) return;
-    refreshProgressUI();
-  });
-  video.addEventListener('progress', function(){
-    var dur = effectiveDuration();
-    if(dur > 0 && video.buffered.length){
-      var end = video.buffered.end(video.buffered.length - 1);
-      progressBuffer.style.width = clamp(end / dur, 0, 1) * 100 + '%';
-    }
-  });
-  var waitTimer = null;
-  video.addEventListener('playing', function(){
-    if(waitTimer){ clearTimeout(waitTimer); waitTimer = null; }
-    hideLoading(); setPlaying(true); stopHoldAlive();
-  });
-  video.addEventListener('waiting', function(){
-    // 短暂缓冲不立即弹全屏 loading（避免闪烁）：延迟 350ms，期间恢复播放则取消
-    if(waitTimer) return;
-    waitTimer = setTimeout(function(){ waitTimer = null; showLoading(); }, 350);
-  });
-  video.addEventListener('seeked', function(){ if(waitTimer){ clearTimeout(waitTimer); waitTimer = null; } });
-  video.addEventListener('pause', function(){ setPlaying(false); showControls(); startHoldAlive(); });
-  video.addEventListener('ended', function(){ setPlaying(false); showControls(); stopHoldAlive(); });
-  video.addEventListener('error', function(){
-    if(!currentUrl) return;
-    var code = video.error ? video.error.code : 0;
-    var text = '';
-    if(code === 4) text = '该视频格式或编码不被浏览器支持，或链接已失效。';
-    else if(code === 2) text = '网络错误，无法加载该视频。请检查链接是否有效、源站是否允许访问。';
-    else if(code === 3) text = '视频解码失败，可能编码格式不受支持。';
-    else if(code === 1) text = '播放被中止。';
-    else text = '未知错误，无法播放该视频。';
-    showError('无法播放该视频', text);
-    setPlaying(false);
-  });
-
-  function togglePlay(){
-    if(!video.src) return;
-    if(video.paused){ video.play().catch(function(){ showError('播放被阻止', '请点击播放器上的播放按钮手动开始。'); }); }
-    else video.pause();
-  }
-  playPauseBtn.addEventListener('click', function(e){ e.stopPropagation(); togglePlay(); });
-  bigPlay.addEventListener('click', function(e){ e.stopPropagation(); togglePlay(); });
-  stage.addEventListener('click', function(e){
-    if(e.target.closest('.controls')) return;
-    if(video.src) togglePlay();
-  });
-  stage.addEventListener('dblclick', function(e){
-    if(e.target.closest('.controls')) return;
-    toggleFullscreen();
-  });
-
-  muteBtn.addEventListener('click', function(e){
-    e.stopPropagation();
-    video.muted = !video.muted;
-    updateMuteUI();
-  });
-  function updateMuteUI(){
-    var muted = video.muted || video.volume === 0;
-    iconVol.classList.toggle('hide', muted);
-    iconMuted.classList.toggle('hide', !muted);
-    if(!video.muted) volRange.value = Math.round(video.volume * 100);
-  }
-  volRange.addEventListener('input', function(){
-    video.muted = false;
-    video.volume = volRange.value / 100;
-    updateMuteUI();
-  });
-  rateSel.addEventListener('change', function(){ video.playbackRate = parseFloat(rateSel.value); });
-  pipBtn.addEventListener('click', function(e){
-    e.stopPropagation();
-    if(document.pictureInPictureElement){ document.exitPictureInPicture().catch(function(){}); }
-    else video.requestPictureInPicture().catch(function(){});
-  });
-  function toggleFullscreen(){
-    if(document.fullscreenElement){ document.exitFullscreen().catch(function(){}); }
-    else stage.requestFullscreen().catch(function(){});
-  }
-  fsBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleFullscreen(); });
-  document.addEventListener('fullscreenchange', function(){
-    if(document.fullscreenElement) stage.classList.add('controls-lock');
-    else stage.classList.remove('controls-lock');
-  });
-  if(document.pictureInPictureEnabled) pipBtn.hidden = false;
-
-  document.addEventListener('keydown', function(e){
-    var tag = (e.target.tagName || '').toLowerCase();
-    if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
-    if(e.code === 'Space'){ e.preventDefault(); togglePlay(); }
-    else if(e.code === 'ArrowRight'){ e.preventDefault(); doSeek(Math.min(effectiveDuration(), videoCurrent() + 5)); }
-    else if(e.code === 'ArrowLeft'){ e.preventDefault(); doSeek(Math.max(0, videoCurrent() - 5)); }
-    else if(e.code === 'ArrowUp'){ e.preventDefault(); video.volume = clamp(video.volume + 0.1, 0, 1); video.muted = false; updateMuteUI(); }
-    else if(e.code === 'ArrowDown'){ e.preventDefault(); video.volume = clamp(video.volume - 0.1, 0, 1); updateMuteUI(); }
-    else if(e.code === 'KeyF'){ toggleFullscreen(); }
-    else if(e.code === 'KeyM'){ video.muted = !video.muted; updateMuteUI(); }
-  });
-
-  function submit(){
-    var url = urlInput.value.trim();
-    if(!url){ urlInput.focus(); return; }
-    if(!/^https?:\/\//i.test(url)){ url = 'https://' + url; urlInput.value = url; }
-    loadVideo(url);
-  }
-  playBtn.addEventListener('click', submit);
-  urlInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') submit(); });
-
+  // 测试示例
   var SAMPLES = [
     { label:'MP4 · 测试片', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' },
     { label:'MP4 · Sintel', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4' },
@@ -1068,6 +283,7 @@ header{
     samplesEl.appendChild(b);
   });
 
+  // 历史记录
   function getHistory(){
     try{ return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){ return []; }
   }

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CloudVodPlayer SDK 测试</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f7;margin:0;padding:30px;color:#333}
+  h1{font-size:22px;margin-bottom:8px}
+  .sub{color:#888;margin-bottom:30px;font-size:14px}
+  .section{background:#fff;border-radius:12px;padding:24px;margin-bottom:24px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+  .section h2{font-size:16px;margin:0 0 16px;color:#555;border-left:3px solid #f2b24c;padding-left:10px}
+  .player-wrap{width:100%;max-width:800px;aspect-ratio:16/9;margin:0 auto}
+  .controls{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
+  .controls button{padding:8px 16px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:13px}
+  .controls button:hover{background:#f0f0f0;border-color:#f2b24c}
+  .event-log{margin-top:12px;padding:10px;background:#1a1a2e;color:#0f0;font-family:monospace;font-size:12px;border-radius:8px;height:100px;overflow-y:auto}
+  .url-input{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box}
+</style>
+</head>
+<body>
+
+<h1>CloudVodPlayer SDK 测试页</h1>
+<p class="sub">验证 Shadow DOM 嵌入、原生/转码播放、事件监听、播放控制 API</p>
+
+<!-- 用法 1：声明式（data 属性）-->
+<div class="section">
+  <h2>用法 1：声明式嵌入（data-cloud-vod + data-url）</h2>
+  <div class="player-wrap" data-cloud-vod data-url="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"></div>
+</div>
+
+<!-- 用法 2：JS API + 事件监听 + 控制按钮 -->
+<div class="section">
+  <h2>用法 2：JS API（事件监听 + 播放控制）— AVI 转码测试</h2>
+  <input class="url-input" id="urlInput2" value="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" placeholder="输入视频地址">
+  <div class="player-wrap" id="player2"></div>
+  <div class="controls">
+    <button onclick="p2.play()">播放</button>
+    <button onclick="p2.pause()">暂停</button>
+    <button onclick="p2.seek(30)">跳到 30 秒</button>
+    <button onclick="p2.seek(120)">跳到 2 分钟</button>
+    <button onclick="loadUrl2()">加载新地址</button>
+  </div>
+  <div class="event-log" id="eventLog2"></div>
+</div>
+
+<!-- 用法 3：主题自定义 -->
+<div class="section">
+  <h2>用法 3：自定义主题色（theme.primary）</h2>
+  <div class="player-wrap" id="player3"></div>
+</div>
+
+<!-- 引入 SDK -->
+<script src="/embed.js"></script>
+<script>
+  // 用法 2：JS API
+  var log2 = document.getElementById('eventLog2');
+  function log2(msg) {
+    var t = new Date().toLocaleTimeString();
+    log2.innerHTML += '[' + t + '] ' + msg + '<br>';
+    log2.scrollTop = log2.scrollHeight;
+  }
+  var p2 = new CloudVodPlayer('#player2', {
+    url: document.getElementById('urlInput2').value,
+    autoplay: false
+  });
+  p2.on('ready', function() { log2('ready: 视频元数据已加载，时长=' + p2.getDuration().toFixed(1) + 's'); });
+  p2.on('play', function() { log2('play'); });
+  p2.on('pause', function() { log2('pause'); });
+  p2.on('timeupdate', function(t) { /* 高频事件不打日志 */ });
+  p2.on('ended', function() { log2('ended'); });
+  p2.on('error', function(e) { log2('error: ' + e.title + ' - ' + e.text); });
+  p2.on('durationchange', function(d) { log2('durationchange: ' + d.toFixed(1) + 's'); });
+
+  function loadUrl2() {
+    var url = document.getElementById('urlInput2').value.trim();
+    if (url) p2.load(url);
+  }
+
+  // 用法 3：自定义主题
+  var p3 = new CloudVodPlayer('#player3', {
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+    theme: { primary: '#4cc38a', radius: '20px' }
+  });
+</script>
+
+</body>
+</html>

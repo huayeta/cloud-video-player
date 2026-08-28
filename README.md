@@ -59,6 +59,108 @@ node server.js
   - **已转码范围指示**：进度条上的淡色条实时显示 ffmpeg 已转码到的时间点；拖到未转区域时显示"转码中"提示，服务器会等待该分片转出后自动续播。
 - **HLS**：服务器拉取 m3u8 并把其中的分片地址递归改写成本地代理，避免源站 CORS 限制。
 
+## 嵌入第三方网页（JS SDK）
+
+提供 `embed.js`，可将播放器以 Shadow DOM 组件形式嵌入任意网页，样式与独立播放器完全一致（左上角转码提醒、自定义控制条、进度拖拽全部保留），与宿主页面样式完全隔离。
+
+### 快速开始（声明式）
+
+```html
+<!-- 1. 放一个容器 -->
+<div style="width:100%;aspect-ratio:16/9;"
+     data-cloud-vod
+     data-url="https://example.com/video.avi"></div>
+
+<!-- 2. 引入 SDK（自动扫描 data-cloud-vod 元素并初始化） -->
+<script src="http://你的服务器:8787/embed.js"></script>
+```
+
+### JS API 用法
+
+```html
+<div id="player" style="width:100%;aspect-ratio:16/9;"></div>
+<script src="http://你的服务器:8787/embed.js"></script>
+<script>
+  var p = new CloudVodPlayer('#player', {
+    url: 'https://example.com/video.avi',
+    autoplay: false,
+    muted: false,
+    theme: { primary: '#f2b24c', radius: '16px' }  // 可选
+  });
+
+  // 事件监听
+  p.on('ready', function() { console.log('时长:', p.getDuration()); });
+  p.on('timeupdate', function(t) { /* 当前播放位置(秒) */ });
+  p.on('ended', function() { console.log('播完了'); });
+  p.on('error', function(e) { console.log(e.title, e.text); });
+
+  // 播放控制
+  p.play();
+  p.pause();
+  p.seek(120);        // 跳到 2 分钟
+  p.load('新视频地址');
+  p.destroy();
+</script>
+```
+
+### 配置选项
+
+| 选项 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `url` | string | `''` | 视频地址 |
+| `server` | string | 自动推断 | 云点播服务器地址（默认从 embed.js 的 script src 推断） |
+| `autoplay` | boolean | `false` | 自动播放（浏览器策略下需配合 muted） |
+| `muted` | boolean | `false` | 静音 |
+| `lazy` | boolean | `true` | 懒加载（滚到可视区附近再初始化） |
+| `theme.primary` | string | `#f2b24c` | 主题色（进度条、按钮、转码标签） |
+| `theme.radius` | string | `16px` | 播放器圆角 |
+
+### 方法
+
+| 方法 | 说明 |
+|---|---|
+| `load(url)` | 加载新视频 |
+| `play()` | 播放 |
+| `pause()` | 暂停 |
+| `seek(seconds)` | 跳转到指定秒数 |
+| `getCurrentTime()` | 获取当前播放位置（秒） |
+| `getDuration()` | 获取总时长（秒） |
+| `on(event, cb)` | 监听事件 |
+| `off(event, cb)` | 取消监听 |
+| `destroy()` | 销毁播放器，释放资源 |
+
+### 事件
+
+| 事件 | 回调参数 | 说明 |
+|---|---|---|
+| `ready` | — | 视频元数据加载完成 |
+| `play` | — | 开始播放 |
+| `pause` | — | 暂停 |
+| `timeupdate` | `currentTime` | 播放位置变化（秒） |
+| `durationchange` | `duration` | 总时长变化（秒） |
+| `ended` | — | 播放结束 |
+| `error` | `{title, text}` | 播放错误 |
+| `destroy` | — | 播放器销毁 |
+
+### 声明式 data 属性
+
+| 属性 | 说明 |
+|---|---|
+| `data-cloud-vod` | 标记为自动初始化的播放器容器 |
+| `data-url` | 视频地址 |
+| `data-autoplay="true"` | 自动播放 |
+| `data-muted="true"` | 静音 |
+| `data-theme-primary="#4cc38a"` | 主题色 |
+| `data-theme-radius="20px"` | 圆角 |
+
+### 注意事项
+
+- **HTTPS**：若宿主页面是 HTTPS，云点播服务器也需 HTTPS（可用 Nginx 反代加证书），否则浏览器拦截混合内容。
+- **自动播放**：浏览器禁止有声自动播放，`autoplay: true` 时建议同时设 `muted: true`，用户点击后再开声。
+- **并发限制**：SDK 全局限制同时转码数为 3（与服务器 `maxConcurrent` 一致），超出时排队。
+- **样式隔离**：播放器渲染在 Shadow DOM 内，宿主页面的 CSS 不会影响播放器，播放器的 CSS 也不会污染宿主页面。
+- **演示页**：启动服务器后访问 `http://localhost:8787/embed-demo.html` 查看完整用法演示。
+
 ## API
 
 - `GET /api/probe?url=...` — 探测视频格式，返回 `{mode: native|hls|transcode}`
@@ -73,13 +175,16 @@ node server.js
 
 ```
 cloud-vod-player/
-├── server.js             # Node 服务器（代理 + ffmpeg 实时转码）
+├── server.js             # Node 服务器（代理 + ffmpeg 实时转码 + CORS）
 ├── package.json
 ├── config.json           # 实际配置（已 gitignore，从 config.example.json 复制）
 ├── config.example.json   # 配置模板（含每项中文说明）
 ├── README.md
 ├── public/
-│   └── index.html        # 播放器页面（单文件，原生 JS）
+│   ├── index.html        # 独立播放器页面
+│   ├── embed.js          # JS SDK（Shadow DOM 嵌入组件，供第三方网页引用）
+│   ├── embed-demo.html   # SDK 用法演示页
+│   └── media/test.mp4
 └── tmp/                  # 转码临时产物（自动清理）
 ```
 
