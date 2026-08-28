@@ -1,0 +1,13 @@
+{
+  "name": "cloud-vod-player",
+  "version": "1.0.0",
+  "description": "云点播：远程视频直连播放 + 任意格式（avi/mkv/rmvb 等）ffmpeg 实时转码播放服务",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "license": "MIT"
+}
