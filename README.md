@@ -49,8 +49,7 @@ node server.js
 |---|---|---|---|
 | MP4 / MOV / WebM / OGG / MP3 等 | 本地服务器反向代理（透传 Range） | 是 | 是 |
 | M3U8 (HLS) | 服务器递归代理 m3u8 与分片 | 是 | 是 |
-| FLV | flv.js + 本地代理 | 是 | 视源而定 |
-| AVI / MKV / RMVB / WMV / MPEG 等 | ffmpeg 实时转码为 HLS 流 | 是（边转边播） | 已转区可拖 |
+| AVI / MKV / FLV / RMVB / WMV / MPEG 等 | ffmpeg 实时转码为 HLS 流 | 是（边转边播） | 任意位置可拖 |
 
 - **原生格式**：本地代理把浏览器的 `Range` 请求原样透传给源站，源站返回 `206`，浏览器即可秒开并任意拖拽进度，同时绕开了跨域(CORS)限制。
 - **不支持格式**：服务器用 ffmpeg 实时转码为 HLS（m3u8 + ts 分片），**转码请求立即返回**，播放器在后台等待首个分片产出后自动起播（慢源站首片约需数秒至十余秒，期间页面显示加载中，不会误报超时）；进度条可拖到已转码区域。
@@ -62,7 +61,7 @@ node server.js
 
 ## API
 
-- `GET /api/probe?url=...` — 探测视频格式，返回 `{mode: native|hls|flv|transcode}`
+- `GET /api/probe?url=...` — 探测视频格式，返回 `{mode: native|hls|transcode}`
 - `GET /api/proxy?url=...` — 原生格式反向代理（透传 Range / 206）
 - `GET /api/hlsproxy?url=...` — HLS 代理（递归重写 m3u8 内分片地址）
 - `GET /api/transcode?url=...&start=秒` — 启动 ffmpeg 实时转码（立即返回），返回 HLS 播放列表地址；`start` 指定从第 N 秒开始转码（拖动到未转码区域时使用，实现任意位置可跳转）

@@ -671,8 +671,6 @@ header{
           video.play().catch(function(){ hideLoading(); });
         } else if(mode === 'hls'){
           playHLS('/api/hlsproxy?url=' + encodeURIComponent(url));
-        } else if(mode === 'flv'){
-          playFLV('/api/proxy?url=' + encodeURIComponent(url));
         } else if(mode === 'transcode'){
           // 不支持的格式：请求服务器后台转码为 HLS，返回后立即开始（首片生成中会自动等待）
           transcodeMode = true;

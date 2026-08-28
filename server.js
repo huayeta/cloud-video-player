@@ -125,7 +125,7 @@ function detectByExt(url) {
   const ext = extOf(url);
   if (!ext) return 'unknown';
   if (ext === 'm3u8') return 'hls';
-  if (ext === 'flv') return 'flv';
+  if (ext === 'flv') return 'transcode'; // FLV 多数缺少完整 keyframes 索引导致 flv.js 无法 seek，统一走转码 HLS 保证拖拽可靠
   if (NATIVE_EXTS.includes(ext)) return 'native';
   if (TRANSCODE_EXTS.includes(ext)) return 'transcode';
   return 'unknown';
@@ -135,6 +135,9 @@ function detectByExt(url) {
 function probeWithFFprobe(url, cb) {
   const args = [
     '-v', 'error',
+    '-user_agent', UA,                  // 与代理一致的 UA，避免源站拒绝
+    '-analyzeduration', '10000000',    // 最多分析 10 秒内容（微秒），快速识别格式，不必扫描整个大文件
+    '-probesize', '10000000',          // 最多读取 10MB 数据
     '-select_streams', 'v:0',
     '-show_entries', 'stream=codec_name,width,height:format=format_name,duration',
     '-of', 'json',
@@ -160,14 +163,13 @@ function probeWithFFprobe(url, cb) {
 
 /**
  * 综合探测，返回 { mode, name, vcodec, container }
- * mode: native | hls | flv | transcode
+ * mode: native | hls | transcode
  */
 function probe(url) {
   const byExt = detectByExt(url);
   return new Promise((resolve) => {
     // 扩展名明确 → 直接决定（不再等待 ffprobe，保证秒回）
     if (byExt === 'hls') return resolve({ mode: 'hls', name: baseName(url) });
-    if (byExt === 'flv') return resolve({ mode: 'flv', name: baseName(url) });
     if (byExt === 'native') return resolve({ mode: 'native', name: baseName(url) });
     if (byExt === 'transcode') return resolve({ mode: 'transcode', name: baseName(url) });
 
