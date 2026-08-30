@@ -244,17 +244,29 @@ const X264_CRF = CFG.x264Crf;
 function buildFFmpegArgs(url, dir, copy, startSec) {
   const segPattern = path.join(dir, 'seg_%03d.ts');
   const playlist = path.join(dir, 'index.m3u8');
+  // AVI/FLV/WMV/RMVB 等格式索引常在文件末尾：
+  // 1. 输入 seek（-ss 在 -i 前）可能失效，需用输出 seek（-ss 在 -i 后）
+  // 2. -analyzeduration/-probesize 限制（2秒/2MB）会导致 ffmpeg 读不到文件末尾的索引，
+  //    进而无法正确 seek，实际从 0 开始转码（表现为跳转后画面从头播放）
+  // 对这些格式：移除探测限制 + 使用输出 seek，确保精确跳转
+  const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+  const needOutputSeek = ['avi', 'flv', 'wmv', 'rmvb', 'rm', 'mpg', 'mpeg'].includes(ext);
   const base = [
     '-y',
-    '-headers', 'User-Agent: ' + UA + '\r\nReferer: ' + new URL(url).origin + '\r\n',
-    // 限制输入探测耗时/数据量：慢源站打开更快（默认探测 5 秒/5MB，对远程大文件过重）
-    '-analyzeduration', '2000000',
-    '-probesize', '2000000',
-    '-fflags', '+genpts'
+    '-headers', 'User-Agent: ' + UA + '\r\nReferer: ' + new URL(url).origin + '\r\n'
   ];
-  // 从指定秒数开始转码（拖动到未转区时使用）：-ss 放在 -i 前为快速 seek
-  if (startSec > 0) base.push('-ss', String(startSec));
-  base.push('-i', url);
+  if (!needOutputSeek) {
+    // MP4/MKV 等格式索引在文件头部：限制探测耗时/数据量，慢源站打开更快
+    base.push('-analyzeduration', '2000000', '-probesize', '2000000');
+  }
+  base.push('-fflags', '+genpts');
+  if (startSec > 0 && needOutputSeek) {
+    base.push('-i', url);
+    base.push('-ss', String(startSec));   // 输出 seek：先解码再丢弃前面帧，精确但稍慢
+  } else {
+    if (startSec > 0) base.push('-ss', String(startSec));  // 输入 seek：快速，适用于 MP4/MKV 等
+    base.push('-i', url);
+  }
   let videoArgs, audioArgs;
   if (copy) {
     // 源已是 h264：视频流拷贝（remux，极快），音频统一转 aac 保证 ts 封装兼容
@@ -539,11 +551,11 @@ function handleStreamFile(req, res, sid, rel) {
       if (!err) {
         // m3u8 动态增长（ffmpeg 持续写入）：不设 Content-Length，走 chunked，
         // 避免 stat 快照与实际内容不符导致 hls.js 拿到不完整清单；
-        // ts 分片转码后不可变 → 允许缓存 + Content-Length。
-        const cacheCtrl = ext === '.ts' ? 'public, max-age=' + CFG.tsCacheMaxAge : 'no-store';
+        // ts 分片也必须 no-store：seek 复用同一会话目录，分片文件名相同（seg_000.ts）
+        // 但内容完全不同（旧=0-6秒，新=60-66秒），允许缓存会导致浏览器播放旧分片（从头播放）。
         const headers = {
           'Content-Type': type,
-          'Cache-Control': cacheCtrl
+          'Cache-Control': 'no-store'
         };
         if (ext === '.ts') headers['Content-Length'] = st.size;
         res.writeHead(200, headers);

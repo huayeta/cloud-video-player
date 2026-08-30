@@ -719,7 +719,9 @@
           self.transcodeDone = false;
           self.transcodeBase = res.startSec || 0;
           self.transcodedSec = self.transcodeBase;
-          self._playHLS(self._api(res.playlist), true);
+          // seek 复用同一会话目录，m3u8 URL 与旧会话相同：加时间戳缓存破坏参数，
+          // 防止 hls.js 使用缓存的旧 m3u8（指向旧分片列表），导致跳转后仍从头播放
+          self._playHLS(self._api(res.playlist) + '?t=' + Date.now(), true);
           self._pollTranscodeStatus();
           // 不在这里 hideLoading：_playHLS 是异步的，等 playing 事件（真正开始播放）再隐藏，
           // 避免黑屏让用户以为卡住了
