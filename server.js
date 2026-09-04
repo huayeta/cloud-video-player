@@ -539,6 +539,18 @@ const server = http.createServer(async (req, res) => {
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
     const stat = fs.statSync(filePath);
+    // HTML 文件做模板替换，注入 basePath，实现一处配置全局生效
+    if (ext === '.html') {
+      let content = fs.readFileSync(filePath, 'utf8');
+      content = content.replace(/\{\{basePath\}\}/g, BASE_PATH);
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Length': Buffer.byteLength(content),
+        'Cache-Control': 'no-cache'
+      });
+      res.end(content);
+      return;
+    }
     res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': stat.size });
     fs.createReadStream(filePath).pipe(res);
     return;
