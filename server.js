@@ -114,7 +114,8 @@ function sessionDir(st, startSec) {
 }
 
 function sessionPlaylistUrl(st, startSec) {
-  return BASE_PATH + '/hls/' + st.hash + '/sessions/s_' + startSec + '/playlist.m3u8';
+  // 返回相对路径（不带 basePath），由前端 _api 方法统一加 basePath
+  return '/hls/' + st.hash + '/sessions/s_' + startSec + '/playlist.m3u8';
 }
 
 /* 检查会话是否已有足够的连续分片（至少1个完整分片） */
@@ -387,8 +388,13 @@ const server = http.createServer((req, res) => {
   // basePath 前缀处理：去掉前缀得到内部路径 rp
   let rp = p;
   if (BASE_PATH) {
-    if (p === BASE_PATH || p === BASE_PATH + '/') {
-      // 访问根路径，重定向到 index.html
+    if (p === '/' || p === '') {
+      // 访问根路径，重定向到 basePath
+      res.writeHead(302, { 'Location': BASE_PATH + '/' });
+      res.end();
+      return;
+    } else if (p === BASE_PATH || p === BASE_PATH + '/') {
+      // 访问 basePath 根路径，映射到 index.html
       rp = '/';
     } else if (p.startsWith(BASE_PATH + '/')) {
       rp = p.slice(BASE_PATH.length);

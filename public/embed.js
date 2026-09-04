@@ -240,6 +240,9 @@
   var SERVER_ORIGIN = '';
   try { if (SCRIPT_SRC) SERVER_ORIGIN = new URL(SCRIPT_SRC).origin; } catch (e) {}
 
+  // 默认 basePath，需与服务器 config.json 的 basePath 一致
+  var DEFAULT_BASE_PATH = '/vod';
+
   function apiUrl(path) {
     return SERVER_ORIGIN ? SERVER_ORIGIN + path : path;
   }
@@ -272,7 +275,7 @@
     var s = document.createElement('script');
     // 从本地服务器加载 hls.js，不依赖 CDN，避免跨域/网络问题导致加载失败、
     // 回调永远不执行（表现为转码在后台跑、ts 已产出但前端不播、loading 卡死）
-    s.src = (SERVER_ORIGIN || '') + '/hls.min.js';
+    s.src = (SERVER_ORIGIN || '') + DEFAULT_BASE_PATH + '/hls.min.js';
     s.onload = function () {
       hlsLoaded = true; hlsLoading = false;
       hlsCbs.forEach(function (fn) { try { fn(); } catch (e) {} });
@@ -294,7 +297,7 @@
     options = options || {};
     this.options = options;
     this.server = options.server || SERVER_ORIGIN || '';
-    this.basePath = options.basePath || '/vod';
+    this.basePath = options.basePath || DEFAULT_BASE_PATH;
     this.theme = options.theme || {};
     this.autoplay = !!options.autoplay;
     this.muted = !!options.muted;
@@ -425,10 +428,12 @@
   CloudVodPlayer.prototype._api = function (path) {
     // 如果是完整 URL，直接返回
     if (/^https?:\/\//i.test(path)) return path;
-    // 确保 basePath 以 / 开头
+    // 确保 basePath 以 / 开头，不以 / 结尾
     var bp = this.basePath || '';
     if (bp && !bp.startsWith('/')) bp = '/' + bp;
     if (bp && bp.endsWith('/')) bp = bp.slice(0, -1);
+    // 如果 path 已经以 basePath 开头，不再重复添加
+    if (bp && path.startsWith(bp + '/')) return this.server + path;
     return this.server + bp + path;
   };
 
