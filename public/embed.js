@@ -676,8 +676,12 @@
     // 限制拖动位置不超过视频总时长（留0.5秒余量）
     if (dur > 0) t = Math.min(t, dur - 0.5);
     t = Math.max(0, t);
-    if (this.transcodeMode && this.knownDuration && t < this.knownDuration - 0.5) {
-      // 新架构：总是走 _seekTranscode，内部先查缓存，命中秒开，未命中才转码
+    // 转码模式下总是走 _seekTranscode：内部先查缓存（inCurrentSession），
+    // 命中则原生 seek 秒开，未命中则调用 /api/seek 创建新会话转码。
+    // 注意：不可依赖 this.knownDuration 非空才走 _seekTranscode——转码启动慢时
+    // knownDuration 可能尚未解析，此时若走原生 video.currentTime 会被 hls.js 限制
+    // 在当前 m3u8 末尾，导致 seek 到未转码区域卡住、持续刷 m3u8。
+    if (this.transcodeMode) {
       this._seekTranscode(t);
       return;
     }
@@ -693,10 +697,16 @@
       seekT = Math.max(0, Math.floor((this.knownDuration - 6) / 6) * 6);
     }
 
-    // 检查是否在当前会话已转码范围内
+    // 检查是否在当前会话已转码且可播放范围内
+    // 注意：transcodedSec 是绝对已转码位置（= transcodeBase + 相对已转码秒数，基于文件系统统计），
+    // 但 ffmpeg 可能已生成分片文件而 m3u8 尚未更新，导致 transcodedSec 大于 m3u8 实际可播放时长。
+    // 因此上界取 transcodedSec 与 (transcodeBase + video.duration) 的较小值，
+    // 避免 m3u8 未更新时误判为可播放，进而原生 seek 到 m3u8 末尾卡住、持续刷 m3u8。
+    var m3u8Dur = (this.video.duration && isFinite(this.video.duration)) ? this.video.duration : Infinity;
+    var playableAbs = Math.min(this.transcodedSec || 0, (this.transcodeBase || 0) + m3u8Dur);
     var inCurrentSession = this.transcodeBase !== undefined &&
       seekT >= this.transcodeBase &&
-      seekT < this.transcodeBase + (this.transcodedSec || 0);
+      seekT < playableAbs;
 
     if (inCurrentSession) {
       // 在当前会话范围内：hls.js 原生 seek，秒开
