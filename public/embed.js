@@ -353,8 +353,12 @@
     var container = this.container;
     container.innerHTML = '';
 
-    // Shadow DOM
-    var shadow = container.attachShadow({ mode: 'open' });
+    // Shadow DOM：复用已有的 shadow root。
+    // destroy() 只清空 innerHTML，无法移除已 attach 的 shadow root（浏览器无 detach API）；
+    // 若此处无条件 attachShadow，第二次 new CloudVodPlayer 会抛
+    // "Shadow root cannot be created on a host which already has a shadow root"。
+    var shadow = container.shadowRoot || container.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '';
     this.shadow = shadow;
 
     // 样式
@@ -498,7 +502,11 @@
     if (this.hideTimer) clearTimeout(this.hideTimer);
     if (this.waitTimer) clearTimeout(this.waitTimer);
     this._resetContainerRatio();
-    if (this.container) this.container.innerHTML = '';
+    if (this.container) {
+      // innerHTML 只清空 light DOM，清不掉 shadow root；需单独清空 shadow 内容
+      if (this.container.shadowRoot) this.container.shadowRoot.innerHTML = '';
+      this.container.innerHTML = '';
+    }
     this._emit('destroy');
     this._listeners = {};
   };
