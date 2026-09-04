@@ -153,8 +153,8 @@ function stopActiveFFmpeg(st) {
   st.activeSession = null;
 }
 
-/* 启动转码会话 */
-function startSession(st, startSec) {
+/* 启动转码会话（异步，等待第一个 playlist.m3u8 生成后返回） */
+async function startSession(st, startSec) {
   startSec = Math.max(0, Math.floor(startSec));
 
   // 如果 duration 已知，限制 startSec 不超过视频末尾
@@ -253,6 +253,11 @@ function startSession(st, startSec) {
     sess.proc = null;
     sess.transcodedSec = sessionTranscodedSec(st, startSec);
     console.log('[ffmpeg] 会话 s_' + startSec + ' 退出, code:', code, ', 已转码:', sess.transcodedSec, '秒');
+    if (code !== 0 && sess.transcodedSec === 0) {
+      // 转码失败且没有产出任何分片，打印 stderr 最后 500 字符用于排查
+      const errTail = errBuf.slice(-500);
+      console.log('[ffmpeg] 转码失败 stderr 末尾:', errTail);
+    }
     if (st.activeSession === startSec) {
       st.activeSession = null;
     }
@@ -263,7 +268,27 @@ function startSession(st, startSec) {
     sess.proc = null;
   });
 
-  return { startSec, reused: false, playlist: sessionPlaylistUrl(st, startSec) };
+  // 等待第一个 playlist.m3u8 生成（最多等 15 秒），避免前端请求 404
+  const playlistPath = path.join(dir, 'playlist.m3u8');
+  const waitStart = Date.now();
+  let ready = false;
+  while (Date.now() - waitStart < 15000) {
+    if (fs.existsSync(playlistPath) && fs.statSync(playlistPath).size > 0) {
+      ready = true;
+      break;
+    }
+    // 如果 ffmpeg 已经退出且没生成 playlist，立即返回失败，不要等满 15 秒
+    if (!sess.proc) {
+      console.log('[ffmpeg] 会话 s_' + startSec + ' ffmpeg 已退出但未生成 playlist.m3u8，转码失败');
+      break;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  if (ready) {
+    console.log('[ffmpeg] 会话 s_' + startSec + ' playlist.m3u8 已就绪，耗时:', (Date.now() - waitStart) + 'ms');
+  }
+
+  return { startSec, reused: false, playlist: sessionPlaylistUrl(st, startSec), ready };
 }
 
 /* ================= 配额管理 ================= */
@@ -375,7 +400,7 @@ const MIME = {
 
 /* ================= HTTP 服务器 ================= */
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://localhost');
   const p = u.pathname;
 
@@ -414,13 +439,14 @@ const server = http.createServer((req, res) => {
     const vurl = u.searchParams.get('url') || '';
     if (!safeURL(vurl)) return sendJSON(res, 400, { error: 'invalid url' });
     const st = getOrCreateState(vurl);
-    const result = startSession(st, 0);
+    const result = await startSession(st, 0);
     sendJSON(res, 200, {
       ok: true,
       hash: st.hash,
       playlist: result.playlist,
       startSec: result.startSec,
       reused: result.reused,
+      ready: result.ready !== false,
       duration: st.duration,
       name: baseName(vurl)
     });
@@ -433,13 +459,14 @@ const server = http.createServer((req, res) => {
     const time = parseFloat(u.searchParams.get('time') || '0');
     if (!safeURL(vurl) || !isFinite(time) || time < 0) return sendJSON(res, 400, { error: 'invalid params' });
     const st = getOrCreateState(vurl);
-    const result = startSession(st, time);
+    const result = await startSession(st, time);
     sendJSON(res, 200, {
       ok: true,
       hash: st.hash,
       playlist: result.playlist,
       startSec: result.startSec,
       reused: result.reused,
+      ready: result.ready !== false,
       duration: st.duration
     });
     return;
