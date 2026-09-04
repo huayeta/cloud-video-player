@@ -288,23 +288,6 @@
     document.head.appendChild(s);
   }
 
-  /* ==================== 全局转码并发控制 ==================== */
-  var activeTranscodes = 0;
-  var MAX_CONCURRENT = 3;
-  var transcodeQueue = [];
-  function acquireTranscode() {
-    if (activeTranscodes < MAX_CONCURRENT) { activeTranscodes++; return true; }
-    return false;
-  }
-  function releaseTranscode() {
-    activeTranscodes = Math.max(0, activeTranscodes - 1);
-    if (transcodeQueue.length) {
-      var next = transcodeQueue.shift();
-      activeTranscodes++;
-      next();
-    }
-  }
-
   /* ==================== CloudVodPlayer 类 ==================== */
   function CloudVodPlayer(selector, options) {
     if (!(this instanceof CloudVodPlayer)) return new CloudVodPlayer(selector, options);
@@ -325,7 +308,6 @@
     this.scrubbing = false;
     this.hideTimer = null;
     this.knownDuration = null;
-    this.transcodeSid = null;
     this.transcodeDone = false;
     this.transcodedSec = 0;
     this.transcodeBase = 0;
@@ -333,7 +315,6 @@
     this.hls = null;
     this.pollToken = 0;
     this.pendingSeekT = 0;
-    this.holdTimer = null;
     this.waitTimer = null;
     this.destroyed = false;
     this._initialized = false;
@@ -496,12 +477,10 @@
   CloudVodPlayer.prototype.destroy = function () {
     if (this.destroyed) return;
     this.destroyed = true;
-    this._stopHoldAlive();
     this._stopExisting();
     if (this.currentUrl && this.transcodeMode) {
       var url = this.currentUrl;
       fetch(this._api('/api/stop?url=' + encodeURIComponent(url))).catch(function () {});
-      releaseTranscode();
     }
     if (this._io) { try { this._io.disconnect(); } catch (e) {} }
     if (this.hideTimer) clearTimeout(this.hideTimer);
@@ -519,12 +498,10 @@
     if (this.currentUrl && this.transcodeMode) {
       var oldUrl = this.currentUrl;
       fetch(this._api('/api/stop?url=' + encodeURIComponent(oldUrl))).catch(function () {});
-      releaseTranscode();
     }
     this._stopExisting();
     this.pollToken++;
     this.currentUrl = url;
-    this.transcodeSid = null;
     this.startOffset = 0;
     this.errorBox.hidden = true;
     this.idleBox.hidden = true;
@@ -534,7 +511,6 @@
     this._resetContainerRatio();   // 切换视频时重置容器比例，新视频加载后再自适应
     this.stageTitle.textContent = shortName(url);
     this.knownDuration = null;
-    this.transcodeSid = null;
     this.transcodeDone = false;
     this.transcodedSec = 0;
     this.transcodeBase = 0;
@@ -548,7 +524,6 @@
       .then(function (t) {
         if (self.destroyed || self.currentUrl !== url) return;
         if (t.playlist) {
-          self.transcodeSid = t.hash || null;
           self.transcodeBase = t.startSec || 0;
           if (t.duration && !self.knownDuration) {
             self.knownDuration = t.duration;
@@ -726,7 +701,6 @@
         if (self.destroyed || self.currentUrl !== url) return;
         if (res.playlist) {
           self.pollToken++;
-          self.transcodeSid = res.hash || null;
           self.transcodeBase = res.startSec || 0;
           self.transcodedSec = self.transcodeBase;
           self.startOffset = t - self.transcodeBase;
@@ -748,11 +722,6 @@
         self._hideLoading();
         self._showError('跳转失败', '无法连接转码服务。');
       });
-  };
-
-  /* ---------- 播放中续转：接近当前连续分片末尾时，自动启动后续转码 ---------- */
-  CloudVodPlayer.prototype._maybeContinueTranscode = function () {
-    // 新架构：ffmpeg 会一直转码到视频结束，不需要续转
   };
 
   /* ---------- UI 辅助 ---------- */
@@ -835,15 +804,8 @@
     if (this.container) this.container.style.aspectRatio = '';
   };
   CloudVodPlayer.prototype._stopExisting = function () {
-    this._stopHoldAlive();
     if (this.hls) { try { this.hls.destroy(); } catch (e) {} this.hls = null; }
     try { this.video.removeAttribute('src'); this.video.load(); } catch (e) {}
-  };
-  CloudVodPlayer.prototype._startHoldAlive = function () {
-    // 新架构：不需要心跳保活
-  };
-  CloudVodPlayer.prototype._stopHoldAlive = function () {
-    if (this.holdTimer) { clearInterval(this.holdTimer); this.holdTimer = null; }
   };
   CloudVodPlayer.prototype._togglePlay = function () {
     if (this.seeking) return;   // 跳转中忽略暂停/播放，避免与新会话的自动 play() 竞态导致无法播放
@@ -900,13 +862,6 @@
       if (self.scrubbing) return;
       self._refreshProgressUI();
       self._emit('timeupdate', self._videoCurrent());
-      // 播放中续转：接近当前连续分片末尾且后面未缓存时，自动启动续转
-      if (self.transcodeMode && !self.seeking && self.video.duration && isFinite(self.video.duration)) {
-        var remain = self.video.duration - self.video.currentTime;
-        if (remain < 15 && remain > 0 && !self._continueReqTime) {
-          self._maybeContinueTranscode();
-        }
-      }
     });
     this.video.addEventListener('progress', function () {
       var dur = self._effectiveDuration();
@@ -918,7 +873,7 @@
     this.video.addEventListener('playing', function () {
       if (self.waitTimer) { clearTimeout(self.waitTimer); self.waitTimer = null; }
       self.seeking = false;   // 真正开始播放，清除跳转中标志位，恢复暂停/播放操作
-      self._hideLoading(); self._setPlaying(true); self._stopHoldAlive();
+      self._hideLoading(); self._setPlaying(true);
     });
     this.video.addEventListener('waiting', function () {
       if (self.waitTimer) return;
@@ -927,9 +882,9 @@
     this.video.addEventListener('seeked', function () {
       if (self.waitTimer) { clearTimeout(self.waitTimer); self.waitTimer = null; }
     });
-    this.video.addEventListener('pause', function () { self._setPlaying(false); self._showControls(); self._startHoldAlive(); });
+    this.video.addEventListener('pause', function () { self._setPlaying(false); self._showControls(); });
     this.video.addEventListener('ended', function () {
-      self._setPlaying(false); self._showControls(); self._stopHoldAlive();
+      self._setPlaying(false); self._showControls();
       self._emit('ended');
     });
     this.video.addEventListener('error', function () {
