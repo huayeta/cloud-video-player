@@ -498,15 +498,15 @@
     this.destroyed = true;
     this._stopHoldAlive();
     this._stopExisting();
-    if (this.transcodeSid) {
-      var sid = this.transcodeSid;
-      fetch(this._api('/api/stop?sid=' + encodeURIComponent(sid))).catch(function () {});
-      if (this.transcodeMode) releaseTranscode();
+    if (this.currentUrl && this.transcodeMode) {
+      var url = this.currentUrl;
+      fetch(this._api('/api/stop?url=' + encodeURIComponent(url))).catch(function () {});
+      releaseTranscode();
     }
     if (this._io) { try { this._io.disconnect(); } catch (e) {} }
     if (this.hideTimer) clearTimeout(this.hideTimer);
     if (this.waitTimer) clearTimeout(this.waitTimer);
-    this._resetContainerRatio();   // 销毁时重置容器比例，恢复用户默认设置
+    this._resetContainerRatio();
     if (this.container) this.container.innerHTML = '';
     this._emit('destroy');
     this._listeners = {};
@@ -515,16 +515,17 @@
   /* ---------- 核心：探测并播放 ---------- */
   CloudVodPlayer.prototype._loadVideo = function (url) {
     var self = this;
-    // 终止上一个转码会话
-    if (this.transcodeSid) {
-      var oldSid = this.transcodeSid;
-      this.transcodeSid = null;
-      fetch(this._api('/api/stop?sid=' + encodeURIComponent(oldSid))).catch(function () {});
-      if (this.transcodeMode) releaseTranscode();
+    // 终止上一个视频的转码
+    if (this.currentUrl && this.transcodeMode) {
+      var oldUrl = this.currentUrl;
+      fetch(this._api('/api/stop?url=' + encodeURIComponent(oldUrl))).catch(function () {});
+      releaseTranscode();
     }
     this._stopExisting();
     this.pollToken++;
     this.currentUrl = url;
+    this.transcodeSid = null;
+    this.startOffset = 0;
     this.errorBox.hidden = true;
     this.idleBox.hidden = true;
     this._showLoading();
@@ -539,43 +540,24 @@
     this.transcodeBase = 0;
     this.transcodeMode = false;
 
-    fetch(this._api('/api/probe?url=' + encodeURIComponent(url)))
+    // 新架构：所有视频统一走转码（会话式 HLS）
+    self.transcodeMode = true;
+    self._setFmtTag('transcode');
+    fetch(self._api('/api/play?url=' + encodeURIComponent(url)))
       .then(function (r) { return r.json(); })
-      .then(function (info) {
+      .then(function (t) {
         if (self.destroyed || self.currentUrl !== url) return;
-        var mode = info.mode || 'native';
-        self._setFmtTag(mode);
-        if (mode === 'native') {
-          self.video.src = self._api('/api/proxy?url=' + encodeURIComponent(url));
-          self.video.play().catch(function () { self.seeking = false; self._hideLoading(); self._setPlaying(false); });
-        } else if (mode === 'hls') {
-          self._playHLS(self._api('/api/hlsproxy?url=' + encodeURIComponent(url)), false);
-        } else if (mode === 'transcode') {
-          self.transcodeMode = true;
-          // 并发控制
-          if (!acquireTranscode()) {
-            self._hideLoading();
-            self._showError('转码繁忙', '当前转码任务过多，请稍后再试。');
-            return;
+        if (t.playlist) {
+          self.transcodeSid = t.hash || null;
+          self.transcodeBase = t.startSec || 0;
+          if (t.duration && !self.knownDuration) {
+            self.knownDuration = t.duration;
+            self._refreshProgressUI();
           }
-          fetch(self._api('/api/transcode?url=' + encodeURIComponent(url)))
-            .then(function (r) { return r.json(); })
-            .then(function (t) {
-              if (self.destroyed || self.currentUrl !== url) return;
-              if (t.playlist) {
-                self.transcodeSid = t.sid || null;
-                self.transcodeBase = t.startSec || 0;
-                self._playHLS(self._api(t.playlist), true);
-                self._pollTranscodeStatus();
-              } else {
-                releaseTranscode();
-                self._showError('转码失败', t.error || '无法启动转码服务');
-              }
-            })
-            .catch(function () {
-              releaseTranscode();
-              self._showError('转码失败', '无法连接转码服务。');
-            });
+          self._playHLS(self._api(t.playlist), true);
+          self._pollTranscodeStatus();
+        } else {
+          self._showError('转码失败', t.error || '无法启动转码服务');
         }
       })
       .catch(function () {
@@ -602,11 +584,13 @@
         self.hls.loadSource(src);
         self.hls.attachMedia(self.video);
         self.hls.on(Hls.Events.MANIFEST_PARSED, function () {
-          // 不在这里 hideLoading：等 playing 事件（真正开始播放）再隐藏，
-          // 避免首个分片加载期间黑屏让用户以为卡住了
+          // seek 到分片中间时，从指定偏移开始播放（而不是从分片开头）
+          if (self.startOffset && self.startOffset > 0.1) {
+            try { self.video.currentTime = Math.min(self.startOffset, (self.video.duration || 0) - 0.1); } catch (e) {}
+            self.startOffset = 0;
+          }
+          // 不在这里 hideLoading：等 playing 事件（真正开始播放）再隐藏
           self.video.play().catch(function () {
-            // 自动播放被浏览器策略拒绝（常见于动态加载 hls.js 后用户交互上下文过期），
-            // 显示大播放按钮，用户点击即可正常播放
             self.seeking = false;
             self._hideLoading();
             self._setPlaying(false);
@@ -635,41 +619,45 @@
 
   /* ---------- 转码状态轮询 ---------- */
   CloudVodPlayer.prototype._pollTranscodeStatus = function () {
-    if (!this.transcodeSid || this.transcodeDone || this.destroyed) return;
+    if (!this.currentUrl || this.transcodeDone || this.destroyed) return;
     var self = this, myToken = this.pollToken;
-    fetch(this._api('/api/status?sid=' + encodeURIComponent(this.transcodeSid)))
-      .then(function (r) {
-        if (r.status === 429) throw { throttled: true };
-        return r.json();
-      })
+    fetch(this._api('/api/status?url=' + encodeURIComponent(this.currentUrl)))
+      .then(function (r) { return r.json(); })
       .then(function (st) {
         if (self.destroyed || myToken !== self.pollToken) return;
-        if (st.startSec !== undefined) self.transcodeBase = st.startSec || 0;
         if (st.duration && !self.knownDuration) {
           self.knownDuration = st.duration;
           self._refreshProgressUI();
           self._emit('durationchange', self.knownDuration);
         }
-        if (st.transcoded && self.knownDuration) {
-          self.transcodedSec = self.transcodeBase + st.transcoded;
-          self.progressTranscoded.hidden = false;
-          self.progressTranscoded.style.width = clamp(self.transcodedSec / self.knownDuration, 0, 1) * 100 + '%';
+        // 更新当前会话的已转码秒数（相对会话起始位置）
+        if (st.activeTranscodedSec !== undefined) {
+          self.transcodedSec = (self.transcodeBase || 0) + st.activeTranscodedSec;
+          if (self.knownDuration) {
+            self.progressTranscoded.hidden = false;
+            self.progressTranscoded.style.width = clamp(self.transcodedSec / self.knownDuration, 0, 1) * 100 + '%';
+          }
           self._updateTranscodeHint();
         }
-        if (st.error && !self.video.src) { self._showError('转码失败', st.error); return; }
-        var absTranscoded = (self.transcodeBase || 0) + (st.transcoded || 0);
-        if (self.currentUrl && (!self.knownDuration || absTranscoded < (self.knownDuration || 0) - 1)) {
-          setTimeout(function () { if (myToken === self.pollToken && !self.destroyed) self._pollTranscodeStatus(); }, self.knownDuration ? 5000 : 3000);
-        } else {
-          self.progressTranscoded.style.width = '100%';
-          self.transcodedSec = self.knownDuration;
+        // 转码完成判断：不在转码且已有分片
+        if (!st.isTranscoding && st.activeTranscodedSec > 0) {
           self.transcodeDone = true;
+          if (self.knownDuration) {
+            self.progressTranscoded.style.width = '100%';
+            self.transcodedSec = self.knownDuration;
+          }
           self._updateTranscodeHint();
+          return;
+        }
+        // 继续轮询
+        if (self.currentUrl) {
+          var delay = st.isTranscoding ? 2000 : 4000;
+          setTimeout(function () { if (myToken === self.pollToken && !self.destroyed) self._pollTranscodeStatus(); }, delay);
         }
       })
-      .catch(function (err) {
+      .catch(function () {
         if (myToken === self.pollToken && self.currentUrl && !self.destroyed)
-          setTimeout(function () { if (myToken === self.pollToken && !self.destroyed) self._pollTranscodeStatus(); }, err && err.throttled ? 5000 : 2000);
+          setTimeout(function () { if (myToken === self.pollToken && !self.destroyed) self._pollTranscodeStatus(); }, 3000);
       });
   };
 
@@ -689,42 +677,66 @@
   };
 
   CloudVodPlayer.prototype._doSeek = function (t) {
+    var dur = this._effectiveDuration();
+    // 限制拖动位置不超过视频总时长（留0.5秒余量）
+    if (dur > 0) t = Math.min(t, dur - 0.5);
+    t = Math.max(0, t);
     if (this.transcodeMode && this.knownDuration && t < this.knownDuration - 0.5) {
-      if (t < (this.transcodeBase || 0) - 1 || t > this.transcodedSec + 1) {
-        this._seekTranscode(t);
-        return;
-      }
-      try { this.video.currentTime = clamp(t - (this.transcodeBase || 0), 0, (this.video.duration || 0)); } catch (e) {}
+      // 新架构：总是走 _seekTranscode，内部先查缓存，命中秒开，未命中才转码
+      this._seekTranscode(t);
       return;
     }
-    try { this.video.currentTime = clamp(t - (this.transcodeBase || 0), 0, (this.video.duration || 0)); } catch (e) {}
+    try { this.video.currentTime = clamp(t, 0, (this.video.duration || 0)); } catch (e) {}
   };
 
   CloudVodPlayer.prototype._seekTranscode = function (t) {
     var self = this;
-    this.seeking = true;   // 标记跳转中：期间忽略暂停/播放操作，避免与新会话的自动 play() 竞态
+    var url = this.currentUrl;
+    var seekT = Math.max(0, Math.floor(t));
+    // 限制不超过视频总时长
+    if (this.knownDuration && seekT >= this.knownDuration - 1) {
+      seekT = Math.max(0, Math.floor((this.knownDuration - 6) / 6) * 6);
+    }
+
+    // 检查是否在当前会话已转码范围内
+    var inCurrentSession = this.transcodeBase !== undefined &&
+      seekT >= this.transcodeBase &&
+      seekT < this.transcodeBase + (this.transcodedSec || 0);
+
+    if (inCurrentSession) {
+      // 在当前会话范围内：hls.js 原生 seek，秒开
+      this.seeking = true;
+      try {
+        this.video.currentTime = seekT - this.transcodeBase;
+        this.video.play().catch(function () {});
+      } catch (e) {}
+      this.seeking = false;
+      this._hideLoading();
+      return;
+    }
+
+    // 超出当前会话范围：调用 /api/seek 创建新会话
+    this.seeking = true;
     this._showLoading();
-    var sid = this.transcodeSid;
     this._stopExisting();
-    var ep = sid
-      ? this._api('/api/seek?sid=' + encodeURIComponent(sid) + '&to=' + Math.max(0, Math.floor(t)))
-      : this._api('/api/transcode?url=' + encodeURIComponent(this.currentUrl) + '&start=' + Math.max(0, Math.floor(t)));
-    fetch(ep)
+
+    fetch(this._api('/api/seek?url=' + encodeURIComponent(url) + '&time=' + seekT))
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (self.destroyed) return;
-        if (res.ok || res.playlist) {
+        if (self.destroyed || self.currentUrl !== url) return;
+        if (res.playlist) {
           self.pollToken++;
-          self.transcodeSid = res.sid || sid || null;
-          self.transcodeDone = false;
+          self.transcodeSid = res.hash || null;
           self.transcodeBase = res.startSec || 0;
           self.transcodedSec = self.transcodeBase;
-          // seek 复用同一会话目录，m3u8 URL 与旧会话相同：加时间戳缓存破坏参数，
-          // 防止 hls.js 使用缓存的旧 m3u8（指向旧分片列表），导致跳转后仍从头播放
-          self._playHLS(self._api(res.playlist) + '?t=' + Date.now(), true);
+          self.startOffset = t - self.transcodeBase;
+          self.transcodeDone = false;
+          if (res.duration && !self.knownDuration) {
+            self.knownDuration = res.duration;
+            self._refreshProgressUI();
+          }
+          self._playHLS(self._api(res.playlist) + '?_t=' + Date.now(), true);
           self._pollTranscodeStatus();
-          // 不在这里 hideLoading：_playHLS 是异步的，等 playing 事件（真正开始播放）再隐藏，
-          // 避免黑屏让用户以为卡住了
         } else {
           self.seeking = false;
           self._hideLoading();
@@ -736,6 +748,11 @@
         self._hideLoading();
         self._showError('跳转失败', '无法连接转码服务。');
       });
+  };
+
+  /* ---------- 播放中续转：接近当前连续分片末尾时，自动启动后续转码 ---------- */
+  CloudVodPlayer.prototype._maybeContinueTranscode = function () {
+    // 新架构：ffmpeg 会一直转码到视频结束，不需要续转
   };
 
   /* ---------- UI 辅助 ---------- */
@@ -823,12 +840,7 @@
     try { this.video.removeAttribute('src'); this.video.load(); } catch (e) {}
   };
   CloudVodPlayer.prototype._startHoldAlive = function () {
-    if (this.holdTimer || !this.transcodeSid) return;
-    var self = this;
-    this.holdTimer = setInterval(function () {
-      if (!self.transcodeSid) { self._stopHoldAlive(); return; }
-      fetch(self._api('/api/ping?sid=' + encodeURIComponent(self.transcodeSid))).catch(function () {});
-    }, 30000);
+    // 新架构：不需要心跳保活
   };
   CloudVodPlayer.prototype._stopHoldAlive = function () {
     if (this.holdTimer) { clearInterval(this.holdTimer); this.holdTimer = null; }
@@ -888,6 +900,13 @@
       if (self.scrubbing) return;
       self._refreshProgressUI();
       self._emit('timeupdate', self._videoCurrent());
+      // 播放中续转：接近当前连续分片末尾且后面未缓存时，自动启动续转
+      if (self.transcodeMode && !self.seeking && self.video.duration && isFinite(self.video.duration)) {
+        var remain = self.video.duration - self.video.currentTime;
+        if (remain < 15 && remain > 0 && !self._continueReqTime) {
+          self._maybeContinueTranscode();
+        }
+      }
     });
     this.video.addEventListener('progress', function () {
       var dur = self._effectiveDuration();
