@@ -16,32 +16,36 @@
   .controls button:hover{background:#f0f0f0;border-color:#f2b24c}
   .event-log{margin-top:12px;padding:10px;background:#1a1a2e;color:#0f0;font-family:monospace;font-size:12px;border-radius:8px;height:100px;overflow-y:auto}
   .url-input{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box}
+  .tip{font-size:12px;color:#999;margin-top:8px}
 </style>
 </head>
 <body>
 
 <h1>CloudVodPlayer SDK 测试页</h1>
-<p class="sub">验证 Shadow DOM 嵌入、原生/转码播放、事件监听、播放控制 API</p>
+<p class="sub">会话式 HLS 转码架构 · 任意格式秒开 · 全进度拖拽 · 声明式/JS API 嵌入</p>
 
 <!-- 用法 1：声明式（data 属性）-->
 <div class="section">
   <h2>用法 1：声明式嵌入（data-cloud-vod + data-url）</h2>
   <div class="player-wrap" data-cloud-vod data-url="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"></div>
+  <p class="tip">页面加载时自动扫描 [data-cloud-vod] 元素并初始化播放器</p>
 </div>
 
 <!-- 用法 2：JS API + 事件监听 + 控制按钮 -->
 <div class="section">
-  <h2>用法 2：JS API（事件监听 + 播放控制）— AVI 转码测试</h2>
-  <input class="url-input" id="urlInput2" value="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" placeholder="输入视频地址">
+  <h2>用法 2：JS API（事件监听 + 播放控制 + 任意格式转码）</h2>
+  <input class="url-input" id="urlInput2" value="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" placeholder="输入视频地址（支持 avi/flv/mkv/rmvb 等任意格式）">
   <div class="player-wrap" id="player2"></div>
   <div class="controls">
     <button onclick="p2.play()">播放</button>
     <button onclick="p2.pause()">暂停</button>
     <button onclick="p2.seek(30)">跳到 30 秒</button>
     <button onclick="p2.seek(120)">跳到 2 分钟</button>
+    <button onclick="p2.seek(300)">跳到 5 分钟（未缓存区域）</button>
     <button onclick="loadUrl2()">加载新地址</button>
   </div>
   <div class="event-log" id="eventLog2"></div>
+  <p class="tip">拖拽到未缓存区域会自动创建新转码会话，已缓存区域秒开</p>
 </div>
 
 <!-- 用法 3：主题自定义 -->
