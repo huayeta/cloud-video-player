@@ -2,6 +2,8 @@
   "_说明_": "云点播服务配置文件模板。复制为 config.json 后按需修改；删除 config.json 即使用本文件默认值。以下每个配置项旁的 _comment 为说明，实际只读取数值/字符串键。",
   "port": 8787,
   "_comment_port": "服务监听端口",
+  "basePath": "/vod",
+  "_comment_basePath": "URL 路径前缀，所有请求（页面/API/HLS/静态资源）都在此前缀下。如 /vod 则首页为 http://host:8787/vod/，API 为 /vod/api/play。设为空字符串则无前缀",
   "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
   "_comment_ua": "抓取源站视频时使用的 User-Agent，部分源站校验 UA 需保持浏览器特征",
   "hlsTime": 6,

@@ -294,6 +294,7 @@
     options = options || {};
     this.options = options;
     this.server = options.server || SERVER_ORIGIN || '';
+    this.basePath = options.basePath || '/vod';
     this.theme = options.theme || {};
     this.autoplay = !!options.autoplay;
     this.muted = !!options.muted;
@@ -420,9 +421,15 @@
     }
   };
 
-  /* ---------- API 路径（支持自定义 server） ---------- */
+  /* ---------- API 路径（支持自定义 server 和 basePath） ---------- */
   CloudVodPlayer.prototype._api = function (path) {
-    return this.server ? this.server + path : path;
+    // 如果是完整 URL，直接返回
+    if (/^https?:\/\//i.test(path)) return path;
+    // 确保 basePath 以 / 开头
+    var bp = this.basePath || '';
+    if (bp && !bp.startsWith('/')) bp = '/' + bp;
+    if (bp && bp.endsWith('/')) bp = bp.slice(0, -1);
+    return this.server + bp + path;
   };
 
   /* ---------- 事件系统 ---------- */

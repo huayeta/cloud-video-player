@@ -34,6 +34,7 @@ const TMP = path.join(ROOT, 'tmp');
 
 const DEFAULTS = {
   port: 8787,
+  basePath: '/vod',
   hlsTime: 6,
   audioBitrateK: 160,
   x264Preset: 'ultrafast',
@@ -56,6 +57,9 @@ const UA = CFG.ua;
 const FFMPEG_PATH = CFG.ffmpegPath || 'ffmpeg';
 const HLS_TIME = CFG.hlsTime;
 const MAX_CACHE_BYTES = CFG.maxCacheMB * 1024 * 1024;
+// 规范化 basePath：确保以 / 开头，不以 / 结尾（空字符串表示无前缀）
+let BASE_PATH = (CFG.basePath || '').replace(/\/+$/, '');
+if (BASE_PATH && !BASE_PATH.startsWith('/')) BASE_PATH = '/' + BASE_PATH;
 
 if (!fs.existsSync(PUBLIC)) fs.mkdirSync(PUBLIC, { recursive: true });
 if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
@@ -110,7 +114,7 @@ function sessionDir(st, startSec) {
 }
 
 function sessionPlaylistUrl(st, startSec) {
-  return '/hls/' + st.hash + '/sessions/s_' + startSec + '/playlist.m3u8';
+  return BASE_PATH + '/hls/' + st.hash + '/sessions/s_' + startSec + '/playlist.m3u8';
 }
 
 /* 检查会话是否已有足够的连续分片（至少1个完整分片） */
@@ -380,12 +384,27 @@ const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  if (p.startsWith('/api/') || p.startsWith('/hls/')) {
+  // basePath 前缀处理：去掉前缀得到内部路径 rp
+  let rp = p;
+  if (BASE_PATH) {
+    if (p === BASE_PATH || p === BASE_PATH + '/') {
+      // 访问根路径，重定向到 index.html
+      rp = '/';
+    } else if (p.startsWith(BASE_PATH + '/')) {
+      rp = p.slice(BASE_PATH.length);
+    } else {
+      // 不在 basePath 下，返回 404
+      sendText(res, 404, 'not found');
+      return;
+    }
+  }
+
+  if (rp.startsWith('/api/') || rp.startsWith('/hls/')) {
     console.log('[req]', new Date().toISOString().slice(11, 19), p + (u.search || ''));
   }
 
   /* ---- API: 播放（从0秒开始） ---- */
-  if (p === '/api/play' && (req.method === 'GET' || req.method === 'POST')) {
+  if (rp === '/api/play' && (req.method === 'GET' || req.method === 'POST')) {
     const vurl = u.searchParams.get('url') || '';
     if (!safeURL(vurl)) return sendJSON(res, 400, { error: 'invalid url' });
     const st = getOrCreateState(vurl);
@@ -403,7 +422,7 @@ const server = http.createServer((req, res) => {
   }
 
   /* ---- API: seek（从指定时间开始） ---- */
-  if (p === '/api/seek' && (req.method === 'GET' || req.method === 'POST')) {
+  if (rp === '/api/seek' && (req.method === 'GET' || req.method === 'POST')) {
     const vurl = u.searchParams.get('url') || '';
     const time = parseFloat(u.searchParams.get('time') || '0');
     if (!safeURL(vurl) || !isFinite(time) || time < 0) return sendJSON(res, 400, { error: 'invalid params' });
@@ -421,7 +440,7 @@ const server = http.createServer((req, res) => {
   }
 
   /* ---- API: 状态查询 ---- */
-  if (p === '/api/status') {
+  if (rp === '/api/status') {
     const vurl = u.searchParams.get('url') || '';
     if (!safeURL(vurl)) return sendJSON(res, 400, { error: 'invalid url' });
     const st = getOrCreateState(vurl);
@@ -442,7 +461,7 @@ const server = http.createServer((req, res) => {
   }
 
   /* ---- API: 停止转码 ---- */
-  if (p === '/api/stop') {
+  if (rp === '/api/stop') {
     const vurl = u.searchParams.get('url') || '';
     if (!safeURL(vurl)) return sendJSON(res, 400, { error: 'invalid url' });
     const st = getOrCreateState(vurl);
@@ -452,7 +471,7 @@ const server = http.createServer((req, res) => {
   }
 
   /* ---- HLS 静态文件服务 ---- */
-  const hlsMatch = p.match(/^\/hls\/([a-f0-9]+)\/(.+)$/);
+  const hlsMatch = rp.match(/^\/hls\/([a-f0-9]+)\/(.+)$/);
   if (hlsMatch) {
     const hash = hlsMatch[1];
     const rel = hlsMatch[2];
@@ -482,7 +501,7 @@ const server = http.createServer((req, res) => {
   }
 
   /* ---- 静态文件服务 ---- */
-  let filePath = path.join(PUBLIC, p === '/' ? 'index.html' : p);
+  let filePath = path.join(PUBLIC, rp === '/' ? 'index.html' : rp);
   if (!filePath.startsWith(PUBLIC)) return sendText(res, 403, 'forbidden');
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
@@ -498,7 +517,8 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log('==============================================');
   console.log('  云点播服务器已启动（会话式 HLS 转码架构）');
-  console.log('  访问地址: http://localhost:' + PORT);
+  console.log('  访问地址: http://localhost:' + PORT + BASE_PATH + '/');
+  console.log('  basePath: ' + (BASE_PATH || '(无前缀)'));
   console.log('  ffmpeg 转码就绪，' + HLS_TIME + '秒分片');
   console.log('  按 Ctrl+C 停止服务');
   console.log('==============================================');

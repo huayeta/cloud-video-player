@@ -10,7 +10,7 @@ cd cloud-vod-player
 node server.js
 ```
 
-然后浏览器打开：**http://localhost:8787**
+然后浏览器打开：**http://localhost:8787/vod/**
 
 > 需要本机已安装 `ffmpeg`（用于实时转码为 HLS）。检查：`ffmpeg -version`
 > - **Mac**：`brew install ffmpeg`
@@ -23,6 +23,7 @@ node server.js
 | 配置项 | 默认值 | 说明 |
 |---|---|---|
 | `port` | `8787` | 服务监听端口 |
+| `basePath` | `/vod` | URL 路径前缀，所有请求（页面/API/HLS/静态资源）都在此前缀下。如 `/vod` 则首页为 `http://host:8787/vod/`，API 为 `/vod/api/play`。设为空字符串则无前缀 |
 | `ua` | Chrome UA | 抓取源站视频的 User-Agent，部分源站校验 UA |
 | `hlsTime` | `6` | 转码 HLS 分片秒数（6 推荐；越小拖动越精确但请求越频繁） |
 | `audioBitrateK` | `160` | 音频转码码率 kbps |
@@ -67,16 +68,16 @@ tmp/{videoHash}/
    - 拖到**已缓存区域** → 复用已有会话，hls.js 原生 seek，秒开
    - 拖到**未缓存区域** → 停止旧 ffmpeg，从目标位置创建新会话转码
 4. **一个视频一个 ffmpeg**：拖动到新位置时旧 ffmpeg 立即停止，不会后台继续缓存浪费资源
-5. **总时长即时显示**：ffmpeg 打开输入时即解析 Duration，通过 `/api/status` 提供给前端
+5. **总时长即时显示**：ffmpeg 打开输入时即解析 Duration，通过 `/vod/api/status` 提供给前端
 
 ### 前台路径 → 后台物理路径映射
 
 | 前台请求路径 | 后台物理路径 |
 |---|---|
-| `/hls/{hash}/sessions/s_0/playlist.m3u8` | `项目目录/tmp/{hash}/sessions/s_0/playlist.m3u8` |
-| `/hls/{hash}/sessions/s_0/seg_000.ts` | `项目目录/tmp/{hash}/sessions/s_0/seg_000.ts` |
+| `/vod/hls/{hash}/sessions/s_0/playlist.m3u8` | `项目目录/tmp/{hash}/sessions/s_0/playlist.m3u8` |
+| `/vod/hls/{hash}/sessions/s_0/seg_000.ts` | `项目目录/tmp/{hash}/sessions/s_0/seg_000.ts` |
 
-即 `/hls/` 前缀直接映射到 `项目根目录/tmp/`。
+即 `/vod/hls/` 前缀直接映射到 `项目根目录/tmp/`。
 
 ## 嵌入第三方网页（JS SDK）
 
@@ -91,14 +92,14 @@ tmp/{videoHash}/
      data-url="https://example.com/video.avi"></div>
 
 <!-- 2. 引入 SDK（自动扫描 data-cloud-vod 元素并初始化） -->
-<script src="http://你的服务器:8787/embed.js"></script>
+<script src="http://你的服务器:8787/vod/embed.js"></script>
 ```
 
 ### JS API 用法
 
 ```html
 <div id="player" style="width:100%;aspect-ratio:16/9;"></div>
-<script src="http://你的服务器:8787/embed.js"></script>
+<script src="http://你的服务器:8787/vod/embed.js"></script>
 <script>
   var p = new CloudVodPlayer('#player', {
     url: 'https://example.com/video.avi',
@@ -128,6 +129,7 @@ tmp/{videoHash}/
 |---|---|---|---|
 | `url` | string | `''` | 视频地址 |
 | `server` | string | 自动推断 | 云点播服务器地址（默认从 embed.js 的 script src 推断） |
+| `basePath` | string | `/vod` | URL 路径前缀，需与服务器 config.json 的 basePath 一致 |
 | `autoplay` | boolean | `false` | 自动播放（浏览器策略下需配合 muted） |
 | `muted` | boolean | `false` | 静音 |
 | `lazy` | boolean | `true` | 懒加载（滚到可视区附近再初始化） |
@@ -183,12 +185,12 @@ tmp/{videoHash}/
 
 | 端点 | 方法 | 说明 |
 |---|---|---|
-| `/api/play?url=...` | GET/POST | 启动播放（从0秒开始转码），返回 `{ok, hash, playlist, startSec, reused, duration, name}` |
-| `/api/seek?url=...&time=秒` | GET/POST | 跳转到指定时间（已缓存则复用旧会话秒开，未缓存则创建新会话转码），返回同上 |
-| `/api/status?url=...` | GET | 查询转码状态，返回 `{ok, duration, activeSession, isTranscoding, activeTranscodedSec, sessionCount}` |
-| `/api/stop?url=...` | GET | 停止当前视频的转码 |
-| `/hls/{hash}/sessions/s_{startSec}/playlist.m3u8` | GET | HLS 播放清单（Cache-Control: no-store，ffmpeg 转码中会动态更新） |
-| `/hls/{hash}/sessions/s_{startSec}/seg_XXX.ts` | GET | HLS 分片（Cache-Control: public, max-age=3600，分片不可变可缓存） |
+| `/vod/api/play?url=...` | GET/POST | 启动播放（从0秒开始转码），返回 `{ok, hash, playlist, startSec, reused, duration, name}` |
+| `/vod/api/seek?url=...&time=秒` | GET/POST | 跳转到指定时间（已缓存则复用旧会话秒开，未缓存则创建新会话转码），返回同上 |
+| `/vod/api/status?url=...` | GET | 查询转码状态，返回 `{ok, duration, activeSession, isTranscoding, activeTranscodedSec, sessionCount}` |
+| `/vod/api/stop?url=...` | GET | 停止当前视频的转码 |
+| `/vod/hls/{hash}/sessions/s_{startSec}/playlist.m3u8` | GET | HLS 播放清单（Cache-Control: no-store，ffmpeg 转码中会动态更新） |
+| `/vod/hls/{hash}/sessions/s_{startSec}/seg_XXX.ts` | GET | HLS 分片（Cache-Control: public, max-age=3600，分片不可变可缓存） |
 
 ## 目录结构
 
