@@ -547,6 +547,51 @@ const server = http.createServer(async (req, res) => {
       if (sess) sess.lastAccess = Date.now();
     }
 
+    // 动态生成 playlist.m3u8（解决 Windows 下 ffmpeg .tmp 文件无法重命名导致 m3u8 不更新的问题）
+    if (rel.endsWith('/playlist.m3u8')) {
+      const sessMatch = rel.match(/^sessions\/s_(\d+)\/playlist\.m3u8$/);
+      if (sessMatch) {
+        const startSec = parseInt(sessMatch[1], 10);
+        const sess = st.sessions.get(startSec);
+        if (sess && fs.existsSync(sess.dir)) {
+          // 读取目录下所有 ts 分片，按文件名排序
+          const files = fs.readdirSync(sess.dir)
+            .filter(f => /^seg_\d+\.ts$/.test(f))
+            .sort();
+          
+          if (files.length > 0) {
+            // 检查 ffmpeg 是否还在运行
+            const isRunning = sess.proc !== null;
+            
+            // 动态生成 playlist.m3u8
+            let m3u8 = '#EXTM3U\n';
+            m3u8 += '#EXT-X-VERSION:6\n';
+            m3u8 += '#EXT-X-TARGETDURATION:' + HLS_TIME + '\n';
+            m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
+            m3u8 += '#EXT-X-INDEPENDENT-SEGMENTS\n';
+            for (const f of files) {
+              m3u8 += '#EXTINF:' + HLS_TIME + '.000000,\n';
+              m3u8 += f + '\n';
+            }
+            // ffmpeg 已退出时添加 ENDLIST（点播模式）
+            // ffmpeg 运行中不添加 ENDLIST（直播模式，hls.js 会定期刷新）
+            if (!isRunning) {
+              m3u8 += '#EXT-X-ENDLIST\n';
+            }
+            
+            res.writeHead(200, {
+              'Content-Type': 'application/vnd.apple.mpegurl',
+              'Content-Length': Buffer.byteLength(m3u8),
+              'Cache-Control': 'no-store',
+              'Access-Control-Allow-Origin': '*'
+            });
+            res.end(m3u8);
+            return;
+          }
+        }
+      }
+    }
+
     const file = path.join(st.dir, rel);
     if (!file.startsWith(st.dir)) return sendText(res, 403, 'forbidden');
     if (!fs.existsSync(file)) return sendText(res, 404, 'not found');
