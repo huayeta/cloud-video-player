@@ -298,27 +298,13 @@ async function startSession(st, startSec) {
     sess.proc = null;
   });
 
-  // 等待第一个 playlist.m3u8 生成（最多等 15 秒），避免前端请求 404
-  const playlistPath = path.join(dir, 'playlist.m3u8');
-  const waitStart = Date.now();
-  let ready = false;
-  while (Date.now() - waitStart < 15000) {
-    if (fs.existsSync(playlistPath) && fs.statSync(playlistPath).size > 0) {
-      ready = true;
-      break;
-    }
-    // 如果 ffmpeg 已经退出且没生成 playlist，立即返回失败，不要等满 15 秒
-    if (!sess.proc) {
-      console.log('[ffmpeg] 会话 s_' + startSec + ' ffmpeg 已退出但未生成 playlist.m3u8，转码失败');
-      break;
-    }
-    await new Promise(r => setTimeout(r, 200));
-  }
-  if (ready) {
-    console.log('[ffmpeg] 会话 s_' + startSec + ' playlist.m3u8 已就绪，耗时:', (Date.now() - waitStart) + 'ms');
-  }
+  // 不再等待 ffmpeg 生成静态 playlist.m3u8
+  // 因为后端会动态生成 playlist.m3u8（即使没有 ts 分片也返回空的直播流）
+  // 这样可以避免 Windows 下 ffmpeg .tmp 文件无法重命名导致等待超时的问题
+  // 前端 hls.js 会定期刷新 playlist，等待 ts 分片生成
+  console.log('[ffmpeg] 会话 s_' + startSec + ' 已启动，动态 playlist.m3u8 立即可用');
 
-  return { startSec, reused: false, playlist: sessionPlaylistUrl(st, startSec), ready };
+  return { startSec, reused: false, playlist: sessionPlaylistUrl(st, startSec), ready: true };
 }
 
 /* ================= 配额管理 ================= */
@@ -559,35 +545,35 @@ const server = http.createServer(async (req, res) => {
             .filter(f => /^seg_\d+\.ts$/.test(f))
             .sort();
           
-          if (files.length > 0) {
-            // 检查 ffmpeg 是否还在运行
-            const isRunning = sess.proc !== null;
-            
-            // 动态生成 playlist.m3u8
-            let m3u8 = '#EXTM3U\n';
-            m3u8 += '#EXT-X-VERSION:6\n';
-            m3u8 += '#EXT-X-TARGETDURATION:' + HLS_TIME + '\n';
-            m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
-            m3u8 += '#EXT-X-INDEPENDENT-SEGMENTS\n';
-            for (const f of files) {
-              m3u8 += '#EXTINF:' + HLS_TIME + '.000000,\n';
-              m3u8 += f + '\n';
-            }
-            // ffmpeg 已退出时添加 ENDLIST（点播模式）
-            // ffmpeg 运行中不添加 ENDLIST（直播模式，hls.js 会定期刷新）
-            if (!isRunning) {
-              m3u8 += '#EXT-X-ENDLIST\n';
-            }
-            
-            res.writeHead(200, {
-              'Content-Type': 'application/vnd.apple.mpegurl',
-              'Content-Length': Buffer.byteLength(m3u8),
-              'Cache-Control': 'no-store',
-              'Access-Control-Allow-Origin': '*'
-            });
-            res.end(m3u8);
-            return;
+          // 即使没有 ts 分片文件，也返回空的播放列表（直播模式）
+          // 这样 hls.js 会定期刷新 playlist，等待 ts 分片生成
+          // 解决 Windows 下 ffmpeg 静态 playlist.m3u8 不存在时返回 404 的问题
+          const isRunning = sess.proc !== null;
+          
+          // 动态生成 playlist.m3u8
+          let m3u8 = '#EXTM3U\n';
+          m3u8 += '#EXT-X-VERSION:6\n';
+          m3u8 += '#EXT-X-TARGETDURATION:' + HLS_TIME + '\n';
+          m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
+          m3u8 += '#EXT-X-INDEPENDENT-SEGMENTS\n';
+          for (const f of files) {
+            m3u8 += '#EXTINF:' + HLS_TIME + '.000000,\n';
+            m3u8 += f + '\n';
           }
+          // ffmpeg 已退出时添加 ENDLIST（点播模式）
+          // ffmpeg 运行中不添加 ENDLIST（直播模式，hls.js 会定期刷新）
+          if (!isRunning) {
+            m3u8 += '#EXT-X-ENDLIST\n';
+          }
+          
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.apple.mpegurl',
+            'Content-Length': Buffer.byteLength(m3u8),
+            'Cache-Control': 'no-store',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(m3u8);
+          return;
         }
       }
     }
