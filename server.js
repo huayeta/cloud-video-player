@@ -235,20 +235,24 @@ async function startSession(st, startSec) {
   // 音频编码
   args.push('-c:a', 'aac', '-b:a', CFG.audioBitrateK + 'k');
   // HLS 输出
-  // 使用相对路径 + cwd 设置工作目录，确保 playlist.m3u8 中引用的 ts 分片
-  // 是相对路径（如 seg_000.ts），避免 Windows 下反斜杠路径导致前端无法加载
+  // 使用绝对路径 + 正斜杠，确保跨平台兼容
+  // Windows 下 path.join 生成反斜杠，ffmpeg 的 HLS 模块对反斜杠路径处理有 bug
+  // （playlist.m3u8 不更新、ts 路径异常），因此统一替换为正斜杠
+  // 不使用 cwd + 相对路径的方式：Windows 下 cwd 方式会导致 playlist.m3u8.tmp
+  // 无法及时重命名，playlist.m3u8 只包含第一个分片，前端播放卡住
+  const hlsSegmentPath = path.join(dir, 'seg_%03d.ts').replace(/\\/g, '/');
+  const hlsPlaylistPath = path.join(dir, 'playlist.m3u8').replace(/\\/g, '/');
   args.push('-f', 'hls');
   args.push('-hls_time', String(HLS_TIME));
   args.push('-hls_list_size', '0');
   args.push('-hls_flags', 'independent_segments');
-  args.push('-hls_segment_filename', 'seg_%03d.ts');
-  args.push('playlist.m3u8');
+  args.push('-hls_segment_filename', hlsSegmentPath);
+  args.push(hlsPlaylistPath);
 
   console.log('[ffmpeg] 启动会话 s_' + startSec + ', args:', args.join(' ').substring(0, 200) + '...');
 
   const proc = spawn(FFMPEG_PATH, args, {
     stdio: ['ignore', 'ignore', 'pipe'],
-    cwd: dir,  // 设置工作目录为会话目录，相对路径基于此目录
     windowsHide: true  // Windows 下隐藏 ffmpeg 控制台窗口
   });
 
