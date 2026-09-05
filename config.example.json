@@ -21,7 +21,7 @@
   "maxConcurrent": 3,
   "_comment_maxConcurrent": "同时转码的 ffmpeg 进程上限（防止多开打爆 CPU/内存），预留配置项",
   "ffmpegPath": "ffmpeg",
-  "_comment_ffmpegPath": "ffmpeg 可执行文件路径。Mac/Linux 保持默认 ffmpeg（依赖系统 PATH）；Windows 可填完整路径如 C:\\ffmpeg\\bin\\ffmpeg.exe，无需配置 PATH",
+  "_comment_ffmpegPath": "ffmpeg 可执行文件路径。Mac/Linux 保持默认 ffmpeg（依赖系统 PATH）；Windows 推荐填完整路径如 C:\\ffmpeg\\bin\\ffmpeg.exe（无需配置 PATH），若已将 ffmpeg\\bin 加入系统 PATH 可填 ffmpeg.exe",
   "ffprobePath": "ffprobe",
   "_comment_ffprobePath": "ffprobe 可执行文件路径（预留，当前版本通过解析 ffmpeg stderr 获取时长，未直接调用 ffprobe）。Windows 可填 C:\\ffmpeg\\bin\\ffprobe.exe"
 }

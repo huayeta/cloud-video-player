@@ -140,13 +140,33 @@ function sessionTranscodedSec(st, startSec) {
   }
 }
 
+/* 跨平台终止子进程
+ * Windows: 直接调用 TerminateProcess 强制终止
+ * Unix: 先发送 SIGTERM 优雅退出，2秒后未退出再 SIGKILL 强制终止
+ */
+function killProcess(proc) {
+  if (!proc || proc.killed) return;
+  try {
+    if (process.platform === 'win32') {
+      // Windows 下 kill() 不传信号默认使用 TerminateProcess
+      proc.kill();
+    } else {
+      // Unix 下先尝试优雅退出
+      proc.kill('SIGTERM');
+      // 2秒后如果进程还在，强制终止
+      setTimeout(() => {
+        try { if (!proc.killed) proc.kill('SIGKILL'); } catch (e) {}
+      }, 2000);
+    }
+  } catch (e) {}
+}
+
 /* 停止当前活跃的 ffmpeg */
 function stopActiveFFmpeg(st) {
   if (st.activeSession !== null) {
     const sess = st.sessions.get(st.activeSession);
     if (sess && sess.proc) {
-      try { sess.proc.kill('SIGTERM'); } catch (e) {}
-      try { sess.proc.kill('SIGKILL'); } catch (e) {}
+      killProcess(sess.proc);
       sess.proc = null;
     }
   }
@@ -224,7 +244,10 @@ async function startSession(st, startSec) {
 
   console.log('[ffmpeg] 启动会话 s_' + startSec + ', args:', args.join(' ').substring(0, 200) + '...');
 
-  const proc = spawn(FFMPEG_PATH, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  const proc = spawn(FFMPEG_PATH, args, {
+    stdio: ['ignore', 'ignore', 'pipe'],
+    windowsHide: true  // Windows 下隐藏 ffmpeg 控制台窗口
+  });
 
   const sess = {
     dir, proc,
